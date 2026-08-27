@@ -1,0 +1,42 @@
+{
+  "name": "Browser Extension Template",
+  "version": "0.0.1",
+  "manifest_version": 3,
+  "description": "A basic template based on SASS and TypeScript to create browser extensions without directly relying on a larger framework.",
+  "homepage_url": "https://github.com/JosunLP/BrowserExtensionTemplate",
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  },
+  "action": {
+    "default_icon": "icons/icon16.png",
+    "default_title": "BrowserExtensionTemplate",
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": false
+  },
+  "permissions": [
+    "storage",
+    "notifications"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; style-src 'self' 'unsafe-inline';"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ]
+    }
+  ]
+}
