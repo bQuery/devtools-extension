@@ -687,12 +687,10 @@ FodyWeavers.xsd
 
 dist
 
-tools/syncConfig.js
-tools/parse.js
-tools/v2.js
-tools/clean.js
-tools/content.js
-tools/package.js
+# Compiled output of tools/*.ts (produced by `bun run build-tooling`).
+# A glob rather than a list: enumerating them meant every new tool needed a
+# matching entry, and tools/verifyBuild.js was committed when one was missed.
+tools/*.js
 artifacts/
 test-results/
 playwright-report/
