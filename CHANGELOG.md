@@ -36,6 +36,9 @@ It replaces the untyped reference scaffold that used to live in the framework's
   preference.
 - Chromium (MV3) and Firefox (MV2) build targets, a build verifier, and store
   packaging.
+- Signed releases: Sigstore build-provenance attestation for every artifact
+  (verifiable with `gh attestation verify`), plus an optional AMO-signed `.xpi`
+  when `AMO_JWT_ISSUER` / `AMO_JWT_SECRET` are configured.
 - Unit tests (`bun test`) and Playwright E2E smoke tests, both run in CI along
   with type-check, lint, format check and both build targets.
 - Documentation: README, contributing guide, architecture notes and publishing

@@ -22,8 +22,9 @@ git push --follow-tags
 ```
 
 The tag triggers `.github/workflows/release.yml`, which validates, builds both
-targets, verifies and packages them, writes `SHA256SUMS.txt` and opens a
-**draft** GitHub release with the zips attached. Review it, then publish.
+targets, verifies and packages them, signs what can be signed (see
+[Signing](#signing)), writes `SHA256SUMS.txt` and opens a **draft** GitHub
+release with the artifacts attached. Review it, then publish.
 
 Store manifests must use a numeric `major.minor.patch[.build]` version. Do not
 put pre-release suffixes (`1.1.0-beta.1`) in `AppData.version`; use a build
@@ -39,6 +40,49 @@ bun run deploy-v2 && bun run verify && bun run package   # firefox-mv2
 Both zips land in `artifacts/`. `bun run verify` is not optional — it catches
 a missing entry point, an unreplaced branding token, a content script that
 accidentally became an ES module, and host permissions creeping back in.
+
+## Signing
+
+Browser extensions are not signed the way a binary is — each store signs what
+it distributes, so what a release workflow can produce differs per target.
+
+### Build provenance (always)
+
+Every release attests its artifacts with
+[`actions/attest-build-provenance`](https://github.com/actions/attest-build-provenance),
+which signs a provenance statement through Sigstore. No secrets are involved,
+so it runs on every release. Anyone can check which workflow, commit and runner
+produced a given file:
+
+```bash
+gh attestation verify bquery-devtools-1.0.0-chromium-mv3.zip \
+  --repo bQuery/devtools-extension
+```
+
+This is the guarantee that actually matters for a store-distributed extension:
+it ties the zip you are about to upload to the commit it was built from.
+
+### Firefox / AMO (when credentials are configured)
+
+AMO is the only party that can produce an installable, signed Firefox artifact
+— signing there is a service, not a local key operation. When the repository
+has `AMO_JWT_ISSUER` and `AMO_JWT_SECRET`
+([API credentials](https://addons.mozilla.org/developers/addon/api/key/))
+configured as secrets, the workflow runs `web-ext sign --channel unlisted` and
+attaches the resulting signed `.xpi` to the release.
+
+Without those secrets the step is **skipped, not failed**: the release still
+ships the unsigned MV2 zip for manual upload through the AMO dashboard. Use the
+signed `.xpi` for self-distribution; a listed AMO release is signed by AMO on
+upload either way.
+
+### Chrome / Edge
+
+There is nothing to sign locally. The Chrome Web Store re-signs every upload
+with its own key and assigns the extension id, so a self-signed CRX would be
+discarded. Self-hosted CRX distribution is a different (and much rarer)
+workflow that needs a private key this repository deliberately does not carry —
+if you need it, keep the key outside CI.
 
 ## Chrome Web Store
 

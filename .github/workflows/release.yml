@@ -11,11 +11,20 @@ on:
 
 permissions:
   contents: write
+  # Required by actions/attest-build-provenance to mint a Sigstore signing
+  # certificate and record the attestation.
+  id-token: write
+  attestations: write
 
 jobs:
   release:
     name: Build and publish store artifacts
     runs-on: ubuntu-latest
+    env:
+      # Present only when the repository has AMO credentials configured; the
+      # signing step is skipped rather than failed when they are absent.
+      AMO_JWT_ISSUER: ${{ secrets.AMO_JWT_ISSUER }}
+      AMO_JWT_SECRET: ${{ secrets.AMO_JWT_SECRET }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,10 +56,42 @@ jobs:
           bun ./tools/verifyBuild.js
           bun run package
 
-      - name: Checksums
+      # AMO is the only party that can produce a signed, installable Firefox
+      # artifact: signing is a service, not a local key operation. Without
+      # credentials the release still ships the unsigned zip for manual upload.
+      - name: Sign the Firefox build (AMO)
+        if: env.AMO_JWT_ISSUER != ''
         run: |
+          bunx web-ext@8 sign \
+            --source-dir dist \
+            --artifacts-dir artifacts \
+            --channel unlisted \
+            --api-key "$AMO_JWT_ISSUER" \
+            --api-secret "$AMO_JWT_SECRET"
+
+      # The .xpi exists only when AMO signing ran, so every consumer of the
+      # artifact list has to tolerate its absence.
+      - name: Collect artifacts
+        id: artifacts
+        run: |
+          shopt -s nullglob
           cd artifacts
-          sha256sum *.zip | tee SHA256SUMS.txt
+          sha256sum *.zip *.xpi | tee SHA256SUMS.txt
+          cd ..
+          {
+            echo 'paths<<ARTIFACT_PATHS'
+            for artifact in artifacts/*.zip artifacts/*.xpi; do echo "$artifact"; done
+            echo ARTIFACT_PATHS
+          } >> "$GITHUB_OUTPUT"
+
+      # Signed build provenance, verifiable with:
+      #   gh attestation verify <file> --repo bQuery/devtools-extension
+      # This proves which workflow, commit and runner produced each artifact —
+      # the property that matters for an extension users install from a store.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ steps.artifacts.outputs.paths }}
 
       - uses: actions/upload-artifact@v4
         with:
@@ -63,6 +104,7 @@ jobs:
         with:
           files: |
             artifacts/*.zip
+            artifacts/*.xpi
             artifacts/SHA256SUMS.txt
           draft: true
           generate_release_notes: true
