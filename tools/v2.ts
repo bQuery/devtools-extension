@@ -22,6 +22,12 @@ interface ManifestJson {
 }
 
 const FIREFOX_BACKGROUND_BUNDLE = 'background.firefox.js';
+
+/** Manifest keys that only exist in MV3 and would warn in Firefox. */
+const MV3_ONLY_KEYS = ['minimum_chrome_version'] as const;
+
+/** Permissions that only exist in MV3; MV2 uses `tabs.executeScript`. */
+const MV3_ONLY_PERMISSIONS = new Set(['scripting']);
 const DEFAULT_MV2_CONTENT_SECURITY_POLICY = "default-src 'self'";
 
 const toPermissionList = (value: unknown): string[] => {
@@ -69,7 +75,14 @@ buildSync({
   legalComments: 'none',
 });
 
+interface AppConfig {
+  AppData?: {
+    firefox?: { geckoId?: string; strictMinVersion?: string };
+  };
+}
+
 const manifest = JSON.parse(fs.readFileSync('./dist/manifest.json', 'utf8')) as ManifestJson;
+const appConfig = JSON.parse(fs.readFileSync('./app.config.json', 'utf8')) as AppConfig;
 
 manifest.manifest_version = 2;
 manifest.background.scripts = [FIREFOX_BACKGROUND_BUNDLE];
@@ -78,6 +91,20 @@ delete manifest.background.type;
 delete manifest.background.service_worker;
 
 manifest.background.persistent = true;
+
+for (const key of MV3_ONLY_KEYS) delete manifest[key];
+
+// AMO requires a stable add-on id, and the devtools APIs used here need a
+// reasonably recent Gecko.
+const firefox = appConfig.AppData?.firefox;
+if (firefox?.geckoId) {
+  manifest.browser_specific_settings = {
+    gecko: {
+      id: firefox.geckoId,
+      ...(firefox.strictMinVersion ? { strict_min_version: firefox.strictMinVersion } : {}),
+    },
+  };
+}
 
 if (manifest.host_permissions) {
   manifest.permissions ??= [];
@@ -92,12 +119,19 @@ if (manifest.optional_host_permissions) {
 delete manifest.host_permissions;
 delete manifest.optional_host_permissions;
 
+manifest.permissions = toPermissionList(manifest.permissions).filter(
+  permission => !MV3_ONLY_PERMISSIONS.has(permission)
+);
+
 let newContentSecurityPolicy = '';
 
 try {
   if (typeof manifest.content_security_policy === 'string') {
     newContentSecurityPolicy = manifest.content_security_policy;
-  } else if (manifest.content_security_policy && typeof manifest.content_security_policy === 'object') {
+  } else if (
+    manifest.content_security_policy &&
+    typeof manifest.content_security_policy === 'object'
+  ) {
     const policyMap = manifest.content_security_policy as Record<string, unknown>;
     if (typeof policyMap.extension_pages === 'string') {
       newContentSecurityPolicy = policyMap.extension_pages;

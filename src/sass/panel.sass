@@ -1,0 +1,399 @@
+// Panel and options-page styles.
+//
+// `_root.sass` and `_mixin.sass` are injected by the Vite SASS config, so the
+// tokens and mixins below are available without an explicit import.
+
+*
+  box-sizing: border-box
+
+html, body
+  margin: 0
+  padding: 0
+  height: 100%
+
+body
+  font-family: var(--font-ui)
+  font-size: var(--font-size)
+  color: var(--text)
+  background: var(--surface)
+
+#panel-root
+  display: flex
+  flex-direction: column
+  height: 100vh
+
+bq-panel
+  display: flex
+  flex-direction: column
+  height: 100%
+  min-height: 0
+
+// --- status bar ------------------------------------------------------------
+
+bq-status-bar
+  display: block
+  border-bottom: 1px solid var(--border)
+  background: var(--surface-raised)
+
+.status-bar
+  display: flex
+  align-items: center
+  gap: 6px
+  padding: 4px 8px
+  flex-wrap: wrap
+
+.spacer
+  flex: 1 1 auto
+
+.status
+  font-weight: 600
+  &.status-connected
+    color: var(--ok)
+  &.status-error, &.status-disconnected
+    color: var(--error)
+  &.status-connecting, &.status-waiting-for-page
+    color: var(--warn)
+
+.status-message
+  margin: 0
+  padding: 4px 8px
+  border-top: 1px solid var(--border)
+  color: var(--error)
+  @include monospace
+
+.badge
+  @include monospace
+  padding: 1px 5px
+  border-radius: 10px
+  border: 1px solid var(--border)
+  color: var(--text-muted)
+  background: var(--surface)
+  &.is-on
+    color: var(--accent)
+    border-color: var(--accent)
+    background: var(--accent-soft)
+  &.is-off
+    opacity: 0.55
+
+// --- controls --------------------------------------------------------------
+
+.btn
+  font: inherit
+  padding: 2px 8px
+  border: 1px solid var(--border-strong)
+  border-radius: var(--radius)
+  background: var(--surface)
+  color: var(--text)
+  cursor: pointer
+  @include focus-ring
+  &:hover:not(:disabled)
+    background: var(--surface-sunken)
+  &:disabled
+    opacity: 0.5
+    cursor: default
+  &.is-active
+    border-color: var(--accent)
+    color: var(--accent)
+
+.chip
+  font: inherit
+  @include monospace
+  padding: 1px 6px
+  border: 1px solid var(--border)
+  border-radius: 10px
+  background: transparent
+  color: var(--text-muted)
+  cursor: pointer
+  @include focus-ring
+  &.is-on
+    color: var(--accent)
+    border-color: var(--accent)
+    background: var(--accent-soft)
+
+.field
+  display: inline-flex
+  align-items: center
+  gap: 4px
+  color: var(--text-muted)
+
+input[type='search'], input[type='number']
+  font: inherit
+  padding: 2px 6px
+  border: 1px solid var(--border-strong)
+  border-radius: var(--radius)
+  background: var(--surface)
+  color: var(--text)
+  @include focus-ring
+
+.tree-search
+  flex: 1 1 180px
+  min-width: 120px
+
+.buffer-input
+  width: 76px
+
+.muted
+  color: var(--text-muted)
+
+.empty
+  padding: 12px 8px
+  color: var(--text-muted)
+
+// --- tabs ------------------------------------------------------------------
+
+.tabs
+  display: flex
+  gap: 2px
+  padding: 0 4px
+  border-bottom: 1px solid var(--border)
+  background: var(--surface-raised)
+
+.tab
+  font: inherit
+  padding: 4px 10px
+  border: none
+  border-bottom: 2px solid transparent
+  background: transparent
+  color: var(--text-muted)
+  cursor: pointer
+  @include focus-ring
+  &.is-active
+    color: var(--text)
+    border-bottom-color: var(--accent)
+  &.is-unsupported
+    opacity: 0.5
+
+.tab-body
+  flex: 1 1 auto
+  min-height: 0
+  overflow: auto
+
+.view-toolbar
+  display: flex
+  align-items: center
+  gap: 8px
+  padding: 4px 8px
+  border-bottom: 1px solid var(--border)
+  background: var(--surface-sunken)
+  position: sticky
+  top: 0
+  z-index: 1
+
+// --- component tree --------------------------------------------------------
+
+.tree-list
+  display: flex
+  flex-direction: column
+
+.tree-row
+  display: flex
+  align-items: center
+  gap: 6px
+  min-height: var(--row-height)
+  padding: 2px 8px
+  border: none
+  background: transparent
+  text-align: left
+  cursor: pointer
+  color: var(--text)
+  @include ellipsis
+  @include focus-ring
+  &:hover
+    background: var(--surface-raised)
+  &.is-selected
+    background: var(--accent-soft)
+  &.is-match .tree-tag
+    text-decoration: underline
+
+.tree-tag
+  @include monospace
+  color: var(--tag)
+
+.tree-attrs
+  @include monospace
+  @include ellipsis
+  color: var(--attr)
+  flex: 1 1 auto
+
+.tree-count
+  @include monospace
+  color: var(--text-muted)
+
+// --- inspector -------------------------------------------------------------
+
+.inspector-list
+  display: flex
+  flex-direction: column
+
+.inspector-row
+  padding: 4px 8px
+  border-bottom: 1px solid var(--border)
+
+.inspector-meta
+  display: flex
+  align-items: center
+  gap: 6px
+
+.inspector-key
+  @include monospace
+  font-weight: 600
+  color: var(--accent)
+
+// --- value tree ------------------------------------------------------------
+
+bq-value
+  display: block
+
+.value-row
+  display: flex
+  align-items: baseline
+  gap: 4px
+  min-height: var(--row-height)
+
+.value-toggle
+  font: inherit
+  width: 14px
+  border: none
+  background: transparent
+  color: var(--text-muted)
+  cursor: pointer
+  padding: 0
+  &.is-leaf
+    cursor: default
+    opacity: 0.4
+
+.value-key
+  @include monospace
+  color: var(--attr)
+
+.value-sep
+  color: var(--text-muted)
+
+.value-preview
+  @include monospace
+  @include ellipsis
+  &.value-string
+    color: var(--value-string)
+  &.value-number
+    color: var(--value-number)
+  &.value-boolean, &.value-null, &.value-undefined
+    color: var(--value-keyword)
+  &.value-unknown
+    color: var(--warn)
+
+.value-children
+  margin-left: 14px
+  border-left: 1px dotted var(--border)
+  padding-left: 6px
+
+.value-note
+  color: var(--text-muted)
+  @include monospace
+
+// --- timeline --------------------------------------------------------------
+
+.timeline-filters
+  display: flex
+  align-items: center
+  gap: 8px
+  padding: 4px 8px
+  border-bottom: 1px solid var(--border)
+  flex-wrap: wrap
+
+.chips
+  display: flex
+  gap: 4px
+  flex-wrap: wrap
+
+.scrubber
+  display: flex
+  align-items: center
+  gap: 8px
+  padding: 4px 8px
+  border-bottom: 1px solid var(--border)
+  background: var(--surface-sunken)
+
+.scrubber-field
+  flex: 1 1 auto
+
+.scrubber-range
+  flex: 1 1 auto
+  accent-color: var(--accent)
+
+.timeline-list
+  display: flex
+  flex-direction: column
+
+.timeline-row
+  border-bottom: 1px solid var(--border)
+  &.is-current
+    background: var(--accent-soft)
+
+.timeline-head
+  display: flex
+  align-items: center
+  gap: 8px
+  width: 100%
+  min-height: var(--row-height)
+  padding: 2px 8px
+  border: none
+  background: transparent
+  color: var(--text)
+  text-align: left
+  cursor: pointer
+  @include focus-ring
+  &:hover
+    background: var(--surface-raised)
+
+.timeline-time
+  @include monospace
+  color: var(--text-muted)
+
+.timeline-type
+  @include monospace
+  color: var(--accent)
+  &.type-error
+    color: var(--error)
+  &.type-measure, &.type-mark
+    color: var(--warn)
+
+.timeline-detail
+  @include ellipsis
+  flex: 1 1 auto
+
+.timeline-payload
+  padding: 4px 8px 8px 24px
+  background: var(--surface-sunken)
+  display: flex
+  flex-direction: column
+  gap: 6px
+  align-items: flex-start
+
+// --- options page ----------------------------------------------------------
+
+.options-page
+  max-width: 44rem
+  margin: 0 auto
+  padding: 16px
+
+.settings-form
+  display: flex
+  flex-direction: column
+  gap: 16px
+
+.field-block
+  display: flex
+  flex-direction: column
+  gap: 4px
+  label
+    font-weight: 600
+  small
+    color: var(--text-muted)
+
+.field-inline
+  display: grid
+  grid-template-columns: auto 1fr
+  gap: 4px 8px
+  align-items: center
+  small
+    grid-column: 1 / -1

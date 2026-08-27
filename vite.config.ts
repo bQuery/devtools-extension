@@ -5,7 +5,8 @@ export default defineConfig({
   build: {
     rollupOptions: {
       input: {
-        app: resolve(__dirname, 'src/app.ts'),
+        panel: resolve(__dirname, 'src/panel.ts'),
+        devtools: resolve(__dirname, 'src/devtools.ts'),
         settings: resolve(__dirname, 'src/settings.ts'),
         background: resolve(__dirname, 'src/background.ts'),
       },
@@ -33,8 +34,8 @@ export default defineConfig({
     extensions: ['.ts', '.tsx', '.js', '.jsx', '.scss', '.sass'],
     alias: {
       '@': resolve(__dirname, './src'),
-      '@components': resolve(__dirname, './src/components'),
-      '@classes': resolve(__dirname, './src/classes'),
+      '@panel': resolve(__dirname, './src/panel'),
+      '@protocol': resolve(__dirname, './src/protocol'),
       '@types': resolve(__dirname, './src/types'),
       '@sass': resolve(__dirname, './src/sass'),
     },

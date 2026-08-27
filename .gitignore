@@ -691,4 +691,9 @@ tools/syncConfig.js
 tools/parse.js
 tools/v2.js
 tools/clean.js
+tools/content.js
+tools/package.js
+artifacts/
+test-results/
+playwright-report/
 package-lock.json

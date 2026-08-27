@@ -1,0 +1,89 @@
+# Publishing
+
+The extension versions independently of `@bquery/bquery`: store review is slow
+and unpredictable, and the bridge protocol — not the release train — is what
+keeps the two compatible.
+
+## Versioning
+
+`app.config.json` is the single source of truth. `bun run sync` copies its
+`AppData.version` into `package.json` and `public/manifest.json`, and every
+`deploy-*` script runs `sync` first.
+
+To cut a release:
+
+```bash
+# 1. bump AppData.version in app.config.json (semver, e.g. 1.1.0)
+bun run sync
+# 2. update CHANGELOG.md
+git commit -am "chore: release 1.1.0"
+git tag v1.1.0
+git push --follow-tags
+```
+
+The tag triggers `.github/workflows/release.yml`, which validates, builds both
+targets, verifies and packages them, writes `SHA256SUMS.txt` and opens a
+**draft** GitHub release with the zips attached. Review it, then publish.
+
+Store manifests must use a numeric `major.minor.patch[.build]` version. Do not
+put pre-release suffixes (`1.1.0-beta.1`) in `AppData.version`; use a build
+segment (`1.1.0.1`) if you need one.
+
+## Building locally
+
+```bash
+bun run deploy-v3 && bun run verify && bun run package   # chromium-mv3
+bun run deploy-v2 && bun run verify && bun run package   # firefox-mv2
+```
+
+Both zips land in `artifacts/`. `bun run verify` is not optional — it catches
+a missing entry point, an unreplaced branding token, a content script that
+accidentally became an ES module, and host permissions creeping back in.
+
+## Chrome Web Store
+
+1. Sign in to the [Developer Dashboard](https://chrome.google.com/webstore/devconsole)
+   with the account that owns the listing.
+2. **Upload new package** → `artifacts/bquery-devtools-<version>-chromium-mv3.zip`.
+3. Check the listing fields (they change less often than the code):
+   - *Category*: Developer Tools.
+   - *Screenshots*: the panel on a page running a bQuery app — component tree,
+     signals, and timeline are the three that matter.
+   - *Privacy*: the extension collects and transmits **nothing**. Declare no
+     data collection.
+4. Justify the permissions. Reviewers ask about these two:
+   - `scripting` — "injects a small relay into the inspected tab, only after
+     the user explicitly enables live streaming and grants that site's origin";
+   - the optional host permission — "requested at runtime for one origin at a
+     time; the extension declares no host permissions and works without any".
+5. Submit. Review typically takes a few days; a permission change resets it.
+
+Edge Add-ons accepts the same MV3 zip through
+[Partner Center](https://partner.microsoft.com/dashboard/microsoftedge).
+
+## Firefox Add-ons (AMO)
+
+1. Build the MV2 target — `browser_specific_settings.gecko.id` comes from
+   `AppData.firefox.geckoId` in `app.config.json` and must stay stable across
+   releases, or AMO treats the upload as a different add-on.
+2. Sign in at [addons.mozilla.org/developers](https://addons.mozilla.org/developers/)
+   and upload `artifacts/bquery-devtools-<version>-firefox-mv2.zip`.
+3. AMO requires reviewable sources for a bundled build. Provide the repository
+   tag plus these build instructions:
+
+   ```bash
+   bun install --frozen-lockfile
+   bun run deploy-v2
+   ```
+
+   Note the Bun version from `mise.toml` in the source-upload notes.
+4. Self-distribution (unlisted signing) uses the same zip via `web-ext sign` if
+   you need a signed build outside AMO.
+
+## After publishing
+
+- Verify the published version loads in a clean profile in both browsers.
+- Confirm the panel connects to a page running `connectDevtoolsBridge()`, and
+  that **Enable live streaming** still prompts for the origin permission — a
+  store-side permission change can silently alter that prompt.
+- Move the release notes from *Unreleased* in `CHANGELOG.md`.
