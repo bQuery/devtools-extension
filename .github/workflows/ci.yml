@@ -10,6 +10,11 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# CI only reads the checkout; nothing here writes to the repository, so the
+# GITHUB_TOKEN is scoped down from the repository default for every job.
+permissions:
+  contents: read
+
 jobs:
   validate:
     name: Typecheck, lint and unit tests
