@@ -201,6 +201,49 @@ test.describe('bQuery DevTools panel', () => {
     ).toBeUndefined();
   });
 
+  test('a prototype-chain method name is answered with an error, not dispatched', async ({
+    page,
+  }) => {
+    await openPanel(page);
+    // The fixture's method table is keyed off the wire. With a plain object it
+    // would resolve "constructor" through the prototype chain and invoke it;
+    // the panel would then be handed `Object` as a result.
+    const replies = await page.evaluate(async () => {
+      const answers: unknown[] = [];
+      const collect = (event: MessageEvent): void => {
+        const data = event.data as Record<string, unknown> | null;
+        if (!data || data['source'] !== 'bquery-devtools' || data['kind'] !== 'response') return;
+        // Only this test's requests: the panel's own connect-time fetches are
+        // still in flight on the same bus, and collecting those made the
+        // assertion race.
+        if (typeof data['id'] !== 'number' || data['id'] < 9000) return;
+        answers.push(data['error'] ?? data['result']);
+      };
+      window.addEventListener('message', collect);
+      for (const [index, method] of ['constructor', 'toString', '__proto__'].entries()) {
+        window.postMessage(
+          {
+            source: 'bquery-devtools',
+            channel: 'panel',
+            v: 1,
+            kind: 'request',
+            id: 9000 + index,
+            method,
+          },
+          '*'
+        );
+      }
+      await new Promise(resolve => setTimeout(resolve, 200));
+      window.removeEventListener('message', collect);
+      return answers;
+    });
+
+    expect(replies).toHaveLength(3);
+    for (const reply of replies) {
+      expect(String(reply)).toContain('Unknown method');
+    }
+  });
+
   test('reports a page that never answers the handshake', async ({ page }) => {
     // No fixture bridge: only the chrome mock, so `hello` goes unanswered.
     await page.addInitScript(() => {

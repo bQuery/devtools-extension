@@ -140,12 +140,17 @@ export const installFixture = (data: FixtureData): void => {
     window.postMessage({ source: SOURCE, channel: 'page', v: 1, ...message }, '*');
   };
 
-  const methods: Record<string, (params: unknown) => unknown> = {
-    ping: () => ({ v: 1, ok: true }),
-    getSnapshot: () => data.snapshot,
-    getComponentTree: () => data.tree,
-    getTimeline: () => data.timeline,
-  };
+  // A Map, not an object literal: the method name comes off the wire, and a
+  // plain object would resolve names like "constructor" or "toString" through
+  // the prototype chain and dispatch to them. The real page-side bridge is
+  // equally untrusting, so the fixture should not be sloppier than what it
+  // stands in for.
+  const methods = new Map<string, (params: unknown) => unknown>([
+    ['ping', () => ({ v: 1, ok: true })],
+    ['getSnapshot', () => data.snapshot],
+    ['getComponentTree', () => data.tree],
+    ['getTimeline', () => data.timeline],
+  ]);
 
   window.addEventListener('message', event => {
     const message = event.data as Record<string, unknown> | null;
@@ -155,7 +160,7 @@ export const installFixture = (data: FixtureData): void => {
       return;
     }
     if (message['kind'] !== 'request') return;
-    const method = methods[String(message['method'])];
+    const method = methods.get(String(message['method']));
     if (!method) {
       post({ kind: 'response', id: message['id'], error: `Unknown method: ${message['method']}` });
       return;
