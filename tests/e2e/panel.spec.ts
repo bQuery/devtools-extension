@@ -7,14 +7,34 @@ import {
   installFixture,
 } from './fixture';
 
-const openPanel = async (page: Page): Promise<void> => {
+/**
+ * Serve the panel against a page whose bridge is described by `overrides`.
+ *
+ * The default is a complete bQuery bridge. Passing `methods` or `capabilities`
+ * models the partial ones — an app that loaded only part of the framework, or
+ * a hand-rolled bridge that implements a subset.
+ */
+const openPanelAgainst = async (
+  page: Page,
+  overrides: {
+    methods?: readonly string[];
+    capabilities?: readonly string[];
+    version?: number;
+  } = {}
+): Promise<void> => {
   await page.addInitScript(installFixture, {
     snapshot: FIXTURE_SNAPSHOT,
     tree: FIXTURE_TREE,
     timeline: FIXTURE_TIMELINE,
-    capabilities: FIXTURE_CAPABILITIES,
+    capabilities: overrides.capabilities ?? FIXTURE_CAPABILITIES,
+    ...(overrides.methods ? { methods: overrides.methods } : {}),
+    ...(overrides.version !== undefined ? { version: overrides.version } : {}),
   });
   await page.goto('/panel.html');
+};
+
+const openPanel = async (page: Page): Promise<void> => {
+  await openPanelAgainst(page);
   await expect(page.locator('.status')).toHaveText('Connected');
 };
 
@@ -298,5 +318,95 @@ test.describe('bQuery DevTools panel', () => {
     await page.goto('/panel.html');
     await expect(page.locator('.status')).toHaveText('Waiting for the page');
     await expect(page.getByRole('tab', { name: 'Components' })).toBeVisible();
+  });
+});
+
+/**
+ * bQuery is modular, and its bridge is a contract anyone can implement. These
+ * cover the pages that only implement part of it: nothing here may leave the
+ * panel blank, stuck, or claiming something the page never said.
+ */
+test.describe('partially implemented bridges', () => {
+  test('a bridge with only getTimeline still shows a timeline', async ({ page }) => {
+    // Advertises nothing at all, so the panel has to find out by asking.
+    await openPanelAgainst(page, { methods: ['getTimeline'], capabilities: [] });
+    await expect(page.locator('.status')).toHaveText('Connected');
+
+    await openTab(page, 'Timeline');
+    await expect(page.locator('.timeline-row')).toHaveCount(FIXTURE_TIMELINE.length);
+
+    // …and the sections it cannot serve say exactly that, rather than
+    // pretending the app has no signals.
+    await openTab(page, 'Signals');
+    await expect(page.locator('.empty')).toContainText('does not provide signals');
+    await expect(page.locator('.empty')).toContainText('does not implement this bridge method');
+  });
+
+  test('a snapshot-only bridge falls back to the flat component registry', async ({ page }) => {
+    await openPanelAgainst(page, { methods: ['getSnapshot', 'getTimeline'] });
+    await expect(page.locator('.status')).toHaveText('Connected');
+
+    await openTab(page, 'Components');
+    // No tree to nest, but the snapshot knows which components are mounted.
+    await expect(page.locator('.muted', { hasText: 'No component tree' })).toBeVisible();
+    await expect(page.locator('.tree-row.is-flat')).toHaveCount(FIXTURE_SNAPSHOT.components.length);
+    await expect(page.locator('.tree-tag').first()).toHaveText('<my-app>');
+
+    // The filter works on the fallback too, and the count agrees with it.
+    await page.getByLabel('Filter components').fill('item');
+    await expect(page.locator('.tree-row.is-flat')).toHaveCount(1);
+    await expect(page.locator('.view-toolbar .muted')).toHaveText('1 matching');
+
+    // The rest of the panel is unaffected by the missing method.
+    await openTab(page, 'Signals');
+    await expect(page.locator('.inspector-row')).toHaveCount(FIXTURE_SNAPSHOT.signals.length);
+  });
+
+  test('a section the page refused is re-probed only when the user asks', async ({ page }) => {
+    await openPanelAgainst(page, { methods: ['getSnapshot'] });
+    await expect(page.locator('.status')).toHaveText('Connected');
+    await expect(page.locator('.badge.is-on', { hasText: 'signals' })).toBeVisible();
+
+    const asked = (): Promise<number> =>
+      page.evaluate(() => (window as unknown as { __asked: number }).__asked);
+    await page.evaluate(() => {
+      const scope = window as unknown as { __asked: number };
+      scope.__asked = 0;
+      window.addEventListener('message', event => {
+        const data = event.data as Record<string, unknown> | null;
+        if (data && data['kind'] === 'request' && data['method'] === 'getComponentTree') {
+          scope.__asked += 1;
+        }
+      });
+    });
+
+    // Nothing is asked while the panel simply sits there: the page already
+    // refused this method, and the verdict holds until someone overrides it.
+    await page.waitForTimeout(600);
+    expect(await asked()).toBe(0);
+
+    // "Refresh all" is that override — and it re-probes exactly once, so a
+    // user who just mounted their first component gets it back. Polled: the
+    // click only schedules the request, and the signals badge was already lit
+    // before it, so nothing else here waits for the round trip.
+    await page.getByRole('button', { name: 'Refresh all' }).click();
+    await expect.poll(asked).toBe(1);
+    await page.waitForTimeout(400);
+    expect(await asked()).toBe(1);
+  });
+
+  test('a page speaking a newer protocol is named, not waited on', async ({ page }) => {
+    await openPanelAgainst(page, { version: 2 });
+    await expect(page.locator('.status')).toHaveText('Incompatible protocol');
+    await expect(page.locator('.status-message')).toContainText('protocol v2');
+    await expect(page.locator('.status-message')).toContainText('Update the extension');
+  });
+
+  test('a page advertising capabilities this build has no view for says so', async ({ page }) => {
+    await openPanelAgainst(page, {
+      capabilities: [...FIXTURE_CAPABILITIES, 'router', 'hydration'],
+    });
+    await expect(page.locator('.status')).toHaveText('Connected');
+    await expect(page.locator('.badge', { hasText: '+2 unknown' })).toBeVisible();
   });
 });

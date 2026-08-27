@@ -74,11 +74,11 @@ small content-script relay, and events arrive as they happen. The permission is
 per-site, requested on a click, and revocable from the browser's extension
 settings. Everything works without it — you just get polling instead of push.
 
-| Permission                    | Why                                                     |
-| ----------------------------- | ------------------------------------------------------- |
-| `storage`                     | Panel preferences (buffer size, poll interval). No site access. |
-| `scripting`                   | Injecting the relay when you opt into live streaming.   |
-| `optional_host_permissions`   | Requested at runtime, one origin at a time.             |
+| Permission                  | Why                                                             |
+| --------------------------- | --------------------------------------------------------------- |
+| `storage`                   | Panel preferences (buffer size, poll interval). No site access. |
+| `scripting`                 | Injecting the relay when you opt into live streaming.           |
+| `optional_host_permissions` | Requested at runtime, one origin at a time.                     |
 
 ## Security model
 
@@ -89,7 +89,7 @@ The inspected page is treated as untrusted, because it is:
 - every value the panel displays is written through text sinks — the panel
   never assigns page-derived strings to `innerHTML`;
 - the panel's CSP forbids inline script and inline style;
-- panel → page messages are embedded as JSON *data* in the evaluated
+- panel → page messages are embedded as JSON _data_ in the evaluated
   expression, never spliced into its source;
 - the background router forwards a panel's messages only to the tab that panel
   attached to, and only when they carry the session token it issued.
@@ -113,13 +113,13 @@ Publishing is documented in [docs/PUBLISHING.md](./docs/PUBLISHING.md).
 
 Every message carries `source: 'bquery-devtools'` and the protocol version `v`.
 
-| Direction    | `kind`     | Purpose                                      |
-| ------------ | ---------- | -------------------------------------------- |
-| panel → page | `hello`    | Announce the panel; the page replies `init`  |
-| panel → page | `request`  | `{ id, method, params }`                     |
-| page → panel | `init`     | `{ capabilities }` handshake                 |
-| page → panel | `response` | `{ id, result \| error }`                    |
-| page → panel | `event`    | One streamed timeline `entry`                |
+| Direction    | `kind`     | Purpose                                     |
+| ------------ | ---------- | ------------------------------------------- |
+| panel → page | `hello`    | Announce the panel; the page replies `init` |
+| panel → page | `request`  | `{ id, method, params }`                    |
+| page → panel | `init`     | `{ capabilities }` handshake                |
+| page → panel | `response` | `{ id, result \| error }`                   |
+| page → panel | `event`    | One streamed timeline `entry`               |
 
 **Methods:** `ping`, `getSnapshot`, `getTimeline` (`{ limit }`),
 `getComponentTree`. Apps can add their own through
@@ -127,6 +127,28 @@ Every message carries `source: 'bquery-devtools'` and the protocol version `v`.
 know about.
 
 **Capabilities:** `signals`, `stores`, `components`, `timeline`, `time-travel`.
+
+## Partial bQuery apps
+
+The panel does not require a complete framework on the other end. Capabilities
+advertised in the handshake are treated as a hint; each section is graded on
+what the page actually answers, and they are fetched independently:
+
+- an app that loaded `reactive` but not `store` shows its signals, and the
+  stores view says the page does not report any — not "0 stores";
+- a bridge implementing only `getTimeline` still gets a working timeline;
+- a bridge that advertises nothing is probed once, and lights up if it answers;
+- with no `getComponentTree`, the components view falls back to the flat
+  registry the snapshot carries;
+- a page speaking a newer protocol version is named as incompatible instead of
+  leaving the panel waiting.
+
+A section the page refuses is asked for exactly once per connection. **Refresh
+all** re-probes everything, so enabling devtools or mounting your first
+component and pressing it is enough — no need to reopen DevTools.
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#partial-implementations) for the
+full degradation model.
 
 ## Credits
 

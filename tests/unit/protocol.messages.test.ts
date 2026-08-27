@@ -2,10 +2,12 @@ import { describe, expect, test } from 'bun:test';
 import {
   BRIDGE_PROTOCOL_VERSION,
   BRIDGE_SOURCE,
+  foreignProtocolVersion,
   helloMessage,
   negotiateCapabilities,
   parseOutbound,
   requestMessage,
+  unknownCapabilities,
 } from '../../src/protocol/messages';
 
 const pageMessage = (extra: Record<string, unknown>): Record<string, unknown> => ({
@@ -110,5 +112,35 @@ describe('negotiateCapabilities', () => {
 
   test('an empty handshake negotiates nothing', () => {
     expect(negotiateCapabilities([]).size).toBe(0);
+  });
+});
+
+describe('foreignProtocolVersion', () => {
+  test('names the version of a bridge message this panel cannot read', () => {
+    expect(
+      foreignProtocolVersion({ source: BRIDGE_SOURCE, channel: 'page', v: 2, kind: 'init' })
+    ).toBe(2);
+  });
+
+  test('is silent about messages this panel can read, and about foreign traffic', () => {
+    expect(
+      foreignProtocolVersion({ source: BRIDGE_SOURCE, channel: 'page', v: 1, kind: 'init' })
+    ).toBeNull();
+    expect(foreignProtocolVersion({ source: 'other-extension', channel: 'page', v: 9 })).toBeNull();
+    expect(foreignProtocolVersion({ source: BRIDGE_SOURCE, channel: 'panel', v: 9 })).toBeNull();
+    expect(foreignProtocolVersion('nope')).toBeNull();
+  });
+
+  test('ignores a non-numeric version rather than reporting NaN at the user', () => {
+    expect(
+      foreignProtocolVersion({ source: BRIDGE_SOURCE, channel: 'page', v: 'two', kind: 'init' })
+    ).toBeNull();
+  });
+});
+
+describe('unknownCapabilities', () => {
+  test('lists what the page offers that this build has no view for', () => {
+    expect(unknownCapabilities(['signals', 'router', 'ssr'])).toEqual(['router', 'ssr']);
+    expect(unknownCapabilities(['signals'])).toEqual([]);
   });
 });

@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { parseComponentTree, parseSnapshot, parseTimeline } from '../../src/protocol/results';
+import {
+  parseComponentTree,
+  parseSnapshot,
+  parseTimeline,
+  parseTimelineResult,
+} from '../../src/protocol/results';
 
 describe('parseSnapshot', () => {
   test('lifts the timeline out of the nested devtools state', () => {
@@ -48,7 +53,7 @@ describe('parseComponentTree', () => {
         { id: 'no-tag' },
       ],
       flat: [{ tagName: 'my-app', instanceCount: 1 }],
-    });
+    }) ?? { tree: [] };
     expect(tree).toHaveLength(1);
     expect(tree[0]?.attrs).toEqual({ class: 'root' });
     expect(tree[0]?.children[0]?.tag).toBe('my-child');
@@ -69,7 +74,7 @@ describe('parseComponentTree', () => {
       cursor = child;
     }
 
-    const { tree } = parseComponentTree({ tree: [root], flat: [] });
+    const { tree } = parseComponentTree({ tree: [root], flat: [] }) ?? { tree: [] };
     let depth = 0;
     let node = tree[0];
     while (node && node.children.length > 0) {
@@ -80,8 +85,18 @@ describe('parseComponentTree', () => {
     expect(depth).toBeGreaterThan(0);
   });
 
-  test('degrades to empty collections for junk', () => {
-    expect(parseComponentTree(null)).toEqual({ tree: [], flat: [] });
+  test('rejects a result that is not a result', () => {
+    // Distinct from "the page has no components": a page that answers
+    // `undefined` has not told the panel anything, and reporting that as an
+    // empty tree would be the panel inventing an answer.
+    expect(parseComponentTree(null)).toBeNull();
+    expect(parseComponentTree(undefined)).toBeNull();
+    expect(parseComponentTree('nope')).toBeNull();
+    expect(parseComponentTree([])).toBeNull();
+  });
+
+  test('degrades to empty collections when the members are junk', () => {
+    expect(parseComponentTree({ tree: 'nope', flat: 7 })).toEqual({ tree: [], flat: [] });
   });
 });
 
@@ -91,5 +106,33 @@ describe('parseTimeline', () => {
     expect(entries).toHaveLength(1);
     expect(entries[0]?.detail).toBe('');
     expect(typeof entries[0]?.timestamp).toBe('number');
+  });
+});
+
+describe('parseTimelineResult', () => {
+  test('separates "no events" from "not a timeline"', () => {
+    // An empty list means the page has recorded nothing; a non-list means the
+    // page cannot serve a timeline at all. The panel says different things.
+    expect(parseTimelineResult([])).toEqual([]);
+    expect(parseTimelineResult(undefined)).toBeNull();
+    expect(parseTimelineResult({ entries: [] })).toBeNull();
+  });
+});
+
+describe('snapshot presence', () => {
+  test('reports which collections the page actually carried', () => {
+    // An app that loaded `reactive` but not `store`.
+    const partial = parseSnapshot({
+      exportedAt: 1,
+      signals: [{ label: 'count', value: 1, subscriberCount: 0 }],
+    });
+    expect(partial?.reported).toEqual({ signals: true, stores: false, components: false });
+    expect(partial?.signals).toHaveLength(1);
+    expect(partial?.stores).toEqual([]);
+  });
+
+  test('an empty array is reported, not treated as absent', () => {
+    const empty = parseSnapshot({ exportedAt: 1, signals: [], stores: [], components: [] });
+    expect(empty?.reported).toEqual({ signals: true, stores: true, components: true });
   });
 });

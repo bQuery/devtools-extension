@@ -50,6 +50,77 @@ describe('handshake', () => {
   });
 });
 
+describe('protocol mismatch', () => {
+  const speakV2 = (): void => {
+    transport.deliver({
+      source: 'bquery-devtools',
+      channel: 'page',
+      v: 2,
+      kind: 'init',
+      capabilities: ['signals'],
+    });
+  };
+
+  test('says so instead of waiting forever on a page that is answering', () => {
+    client.start();
+    transport.open();
+    speakV2();
+
+    expect(client.state.value).toBe('incompatible');
+    expect(client.detail.value).toMatch(/protocol v2/);
+    expect(client.detail.value).toMatch(/v1/);
+    // The message is still discarded: nothing was negotiated from it.
+    expect(client.capabilities.value.size).toBe(0);
+  });
+
+  test('keeps retrying, so navigating to a compatible app recovers', () => {
+    client.start();
+    transport.open();
+    speakV2();
+    const before = transport.sent.length;
+
+    clock.advance(100);
+    expect(transport.sent.length).toBeGreaterThan(before);
+
+    transport.init(['signals']);
+    expect(client.state.value).toBe('connected');
+  });
+
+  test('reports one version once, however many messages arrive', () => {
+    client.start();
+    transport.open();
+    speakV2();
+
+    // A v2 page answers every `hello`. Overwrite the detail and watch that
+    // the repeats do not keep stamping over whatever the panel says next.
+    client.detail.value = 'untouched';
+    speakV2();
+    speakV2();
+    expect(client.detail.value).toBe('untouched');
+  });
+});
+
+describe('capabilities', () => {
+  test('keeps the raw advertised list, including entries it has no view for', () => {
+    client.start();
+    transport.open();
+    transport.init(['signals', 'router-devtools']);
+
+    expect(client.capabilities.value.has('signals')).toBe(true);
+    expect([...client.capabilities.value]).toHaveLength(1);
+    // The unknown one is not negotiated, but it is not forgotten either.
+    expect(client.advertised.value).toEqual(['signals', 'router-devtools']);
+  });
+
+  test('a reconnect clears what the last page advertised', () => {
+    client.start();
+    transport.open();
+    transport.init(['signals', 'router-devtools']);
+    client.resetHandshake('page navigated');
+    expect(client.advertised.value).toEqual([]);
+  });
+});
+
 describe('requests', () => {
   test('correlates responses by id', async () => {
     client.start();

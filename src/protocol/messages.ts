@@ -34,14 +34,24 @@ export const BRIDGE_SOURCE = 'bquery-devtools' as const;
 export type BridgeCapability =
   (typeof import('@bquery/bquery/devtools').BRIDGE_CAPABILITIES)[number];
 
-/** Every capability this panel knows how to make use of. */
-export const KNOWN_CAPABILITIES: readonly BridgeCapability[] = [
-  'signals',
-  'stores',
-  'components',
-  'timeline',
-  'time-travel',
-];
+/**
+ * Every capability this panel knows how to make use of.
+ *
+ * Declared as a total `Record` over the published capability union rather than
+ * a plain array: adding a capability upstream then fails to compile here,
+ * instead of silently producing a panel with a feature it never renders and a
+ * feature map missing an entry. Insertion order is the display order.
+ */
+const CAPABILITY_VIEWS: Readonly<Record<BridgeCapability, true>> = {
+  signals: true,
+  stores: true,
+  components: true,
+  timeline: true,
+  'time-travel': true,
+};
+
+/** Every capability this panel knows how to make use of, in display order. */
+export const KNOWN_CAPABILITIES = Object.keys(CAPABILITY_VIEWS) as readonly BridgeCapability[];
 
 /** Built-in bridge methods (see `createBridgeServer`). */
 export type BridgeMethodName = 'ping' | 'getSnapshot' | 'getTimeline' | 'getComponentTree';
@@ -199,6 +209,37 @@ export const parseOutbound = (data: unknown): OutboundMessage | null => {
     default:
       return null;
   }
+};
+
+/**
+ * The protocol version of a bridge message this panel cannot speak.
+ *
+ * `parseOutbound` drops such messages, which is the safe thing to do with a
+ * contract you do not understand — but dropping them silently leaves the panel
+ * waiting forever on a page that is, in fact, answering. This lets the client
+ * say so instead.
+ *
+ * Returns `null` for anything that is not a page-side bridge message, and for
+ * messages this panel *can* speak.
+ */
+export const foreignProtocolVersion = (data: unknown): number | null => {
+  if (!isRecord(data)) return null;
+  if (data['source'] !== BRIDGE_SOURCE || data['channel'] !== 'page') return null;
+  const version = data['v'];
+  if (typeof version !== 'number' || version === BRIDGE_PROTOCOL_VERSION) return null;
+  return version;
+};
+
+/**
+ * Capabilities the page advertised that this panel has no view for.
+ *
+ * Not an error — a newer framework may advertise more than this panel knows —
+ * but worth surfacing, because it is the visible symptom of an extension that
+ * has fallen behind the app it is inspecting.
+ */
+export const unknownCapabilities = (advertised: readonly string[]): string[] => {
+  const known = new Set<string>(KNOWN_CAPABILITIES);
+  return advertised.filter(capability => !known.has(capability));
 };
 
 /** Keep only the capabilities this panel actually implements a view for. */

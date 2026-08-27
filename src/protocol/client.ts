@@ -14,6 +14,8 @@
  */
 import { signal, type Signal } from '@bquery/bquery/reactive';
 import {
+  BRIDGE_PROTOCOL_VERSION,
+  foreignProtocolVersion,
   helloMessage,
   negotiateCapabilities,
   parseOutbound,
@@ -24,9 +26,22 @@ import {
 } from './messages';
 import type { BridgeTransport, TransportStatus } from './transport';
 
-/** Connection state as displayed by the panel. */
+/**
+ * Connection state as displayed by the panel.
+ *
+ * `incompatible` is its own state rather than an error: the page *is*
+ * answering, it simply speaks a bridge protocol this panel does not. The
+ * distinction is what the status bar needs to tell the user to update the
+ * extension instead of debugging their app.
+ */
 export type ConnectionState =
-  'idle' | 'connecting' | 'waiting-for-page' | 'connected' | 'disconnected' | 'error';
+  | 'idle'
+  | 'connecting'
+  | 'waiting-for-page'
+  | 'connected'
+  | 'incompatible'
+  | 'disconnected'
+  | 'error';
 
 /** Options for {@link BridgeClient}. */
 export interface BridgeClientOptions {
@@ -78,6 +93,15 @@ export class BridgeClient {
   public readonly capabilities: Signal<ReadonlySet<BridgeCapability>> = signal<
     ReadonlySet<BridgeCapability>
   >(new Set<BridgeCapability>());
+  /**
+   * Every capability string the page advertised, including ones this panel has
+   * no view for (reactive).
+   *
+   * {@link capabilities} is the negotiated subset the panel can act on; this is
+   * the raw list, so the UI can point out that the page offers more than this
+   * version of the extension understands.
+   */
+  public readonly advertised: Signal<readonly string[]> = signal<readonly string[]>([]);
   /** Human-readable detail for the current state (reactive). */
   public readonly detail: Signal<string> = signal('');
 
@@ -103,6 +127,8 @@ export class BridgeClient {
    * while the status bar claims the panel is connected.
    */
   private handshakeComplete = false;
+  /** Foreign protocol version already reported, so it is said once, not per message. */
+  private reportedForeignVersion: number | null = null;
   private disposed = false;
   private started = false;
 
@@ -156,8 +182,10 @@ export class BridgeClient {
   public resetHandshake(reason = 'page navigated'): void {
     if (this.disposed) return;
     this.handshakeComplete = false;
+    this.reportedForeignVersion = null;
     this.rejectAllPending(new Error(`bQuery DevTools: ${reason}`));
     this.capabilities.value = new Set<BridgeCapability>();
+    this.advertised.value = [];
     this.state.value = 'waiting-for-page';
     this.detail.value = reason;
     this.scheduleHello(true);
@@ -214,6 +242,7 @@ export class BridgeClient {
         this.cancelHello();
         this.rejectAllPending(new Error(`bQuery DevTools: ${status.reason}`));
         this.capabilities.value = new Set<BridgeCapability>();
+        this.advertised.value = [];
         this.state.value = 'disconnected';
         this.detail.value = status.reason;
         return;
@@ -230,13 +259,17 @@ export class BridgeClient {
   private handleMessage(data: unknown): void {
     if (this.disposed) return;
     const message = parseOutbound(data);
-    if (!message) return;
+    if (!message) {
+      this.reportIfIncompatible(data);
+      return;
+    }
 
     switch (message.kind) {
       case 'init': {
         const negotiated = negotiateCapabilities(message.capabilities);
         this.handshakeComplete = true;
         this.cancelHello();
+        this.advertised.value = message.capabilities;
         this.capabilities.value = negotiated;
         this.state.value = 'connected';
         this.detail.value = '';
@@ -264,6 +297,27 @@ export class BridgeClient {
         return;
       }
     }
+  }
+
+  /**
+   * Surface a page that answers in a protocol version this panel cannot read.
+   *
+   * The message is still discarded — parsing a contract you do not understand
+   * is how a validator becomes an attack surface — but the panel says so once
+   * per distinct version instead of sitting in "waiting for the page" while
+   * the page answers every `hello`.
+   *
+   * The handshake is deliberately *not* completed: `hello` keeps retrying, so
+   * navigating to a compatible app recovers without reopening DevTools.
+   */
+  private reportIfIncompatible(data: unknown): void {
+    const version = foreignProtocolVersion(data);
+    if (version === null || version === this.reportedForeignVersion) return;
+    this.reportedForeignVersion = version;
+    this.state.value = 'incompatible';
+    this.detail.value =
+      `The page speaks bridge protocol v${version}; this panel speaks ` +
+      `v${BRIDGE_PROTOCOL_VERSION}. Update the extension (or the app) so the two match.`;
   }
 
   private scheduleHello(immediate: boolean): void {

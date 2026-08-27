@@ -37,15 +37,15 @@ end.
 
 ## Layers
 
-| Layer          | Module                        | Responsibility                                        |
-| -------------- | ----------------------------- | ----------------------------------------------------- |
-| Protocol       | `src/protocol/messages.ts`    | Message shapes, builders, and validation of page input |
-| Protocol       | `src/protocol/results.ts`     | Validation of method *results*                         |
-| Protocol       | `src/protocol/client.ts`      | Handshake, capabilities, request correlation, timeouts |
-| Transport      | `src/transports/*.ts`         | Two ways to move bytes between panel and page          |
-| Routing        | `src/background/router.ts`    | Tab-scoped, token-checked routing for the port transport |
-| State          | `src/panel/*.ts`              | Buffering, filtering, time travel, preferences         |
-| View           | `src/panel/components/*.ts`   | Custom elements rendering from panel state             |
+| Layer     | Module                      | Responsibility                                           |
+| --------- | --------------------------- | -------------------------------------------------------- |
+| Protocol  | `src/protocol/messages.ts`  | Message shapes, builders, and validation of page input   |
+| Protocol  | `src/protocol/results.ts`   | Validation of method _results_                           |
+| Protocol  | `src/protocol/client.ts`    | Handshake, capabilities, request correlation, timeouts   |
+| Transport | `src/transports/*.ts`       | Two ways to move bytes between panel and page            |
+| Routing   | `src/background/router.ts`  | Tab-scoped, token-checked routing for the port transport |
+| State     | `src/panel/*.ts`            | Buffering, filtering, time travel, preferences           |
+| View      | `src/panel/components/*.ts` | Custom elements rendering from panel state               |
 
 Each layer only knows the one below it. The views never talk to a transport;
 the client never touches the DOM; the protocol modules have no browser
@@ -57,8 +57,7 @@ dependencies at all, which is why most of them are unit-testable without a DOM.
 `typeof import('@bquery/bquery/devtools')` type queries:
 
 ```ts
-export const BRIDGE_PROTOCOL_VERSION:
-  typeof import('@bquery/bquery/devtools').BRIDGE_PROTOCOL_VERSION = 1;
+export const BRIDGE_PROTOCOL_VERSION: typeof import('@bquery/bquery/devtools').BRIDGE_PROTOCOL_VERSION = 1;
 ```
 
 This is a type-only reference, so the framework's page-side bridge runtime is
@@ -77,7 +76,7 @@ expression that installs a `message` listener buffering page-channel bridge
 messages into an array, and returns (and clears) that array as JSON. The
 install is idempotent and re-runs on every poll, which makes the transport
 self-healing across navigations. Outbound messages are evaluated as
-`window.postMessage(JSON.parse("…"), '*')` — the message is *data* inside the
+`window.postMessage(JSON.parse("…"), '*')` — the message is _data_ inside the
 expression, never source.
 
 **`PortTransport` (opt-in).** A long-lived `chrome.runtime` port to the
@@ -116,9 +115,59 @@ hold throughout:
 3. **Bound everything.** Previews are truncated, child lists capped, the
    timeline is a ring buffer, and the in-page relay queue is bounded too.
 
+## Partial implementations
+
+bQuery is modular, and its bridge is a public contract. An app may load
+`reactive` without `store`, run devtools without ever mounting a component, or
+hand-roll a bridge server that implements two of the four methods. The panel is
+built so that none of that produces a blank window, a spinner that never stops,
+or a claim the page never made.
+
+**Advertisement is a hint; evidence decides.** `createBridgeServer` advertises
+the full capability list regardless of which modules the app actually loaded,
+and a trimmed bridge may advertise nothing while answering everything. So the
+`init` capability list is recorded but not obeyed: `panel/features.ts` tracks,
+per feature, what the page has actually _proved_ it can serve.
+
+| Status        | Meaning                                                          | Retried?                                                                   |
+| ------------- | ---------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `unknown`     | Not attempted yet on this connection                             | yes — including a one-shot probe of capabilities the page never advertised |
+| `available`   | The page returned data the panel could parse                     | yes, on every refresh                                                      |
+| `unsupported` | The page cannot serve it (no such method, or an unusable answer) | no — until the next handshake or an explicit **Refresh all**               |
+| `failed`      | It should work but the last attempt did not                      | yes, on every refresh                                                      |
+
+Four rules follow from that model:
+
+1. **Sections fail independently.** `refreshAll` runs the three fetches
+   concurrently and none of them rejects; a page that implements `getTimeline`
+   but not `getSnapshot` still gets a timeline. (This was a real defect: the
+   fetches used to be chained through `Promise.all`, so one missing method took
+   the whole panel down with it.)
+2. **Probe once, then stop asking.** A capability that was never advertised is
+   still tried once per connection — that is what lets a bridge advertising
+   nothing light up. A method the page refuses is not asked again until the
+   next handshake or an explicit refresh, so an absent feature costs exactly
+   one request.
+3. **Absent is not empty.** A snapshot carrying `signals` but no `stores` key
+   leaves the stores view saying _the page does not report stores_, rather than
+   a confident and wrong "0 stores" — and does not wipe a component registry
+   that `getComponentTree` filled in.
+4. **Degrade to what is there.** With no component tree but a snapshot that
+   lists components, the tree view shows that flat registry instead of an empty
+   panel. Time travel is gated on having a base snapshot and recorded events —
+   it is reconstructed by the panel, so it works whether or not the page claims
+   a `time-travel` capability.
+
+A page speaking a protocol version this panel does not know is a related case.
+Its messages are still discarded — parsing a contract you do not understand is
+how a validator becomes an attack surface — but the panel says so
+("the page speaks bridge protocol v2…") instead of sitting in _waiting for the
+page_ while the page answers every `hello`. The handshake keeps retrying, so
+navigating to a compatible app recovers without reopening DevTools.
+
 ## Time travel
 
-The bridge exposes primitives, not history: `getSnapshot` is the state *now*
+The bridge exposes primitives, not history: `getSnapshot` is the state _now_
 and `event` messages stream what changed after. Time travel is reconstructed in
 the panel — the connect-time snapshot is the base, and `panel/timeTravel.ts`
 replays recorded events onto it up to a chosen index.
@@ -126,7 +175,7 @@ replays recorded events onto it up to a chosen index.
 Event payloads are app-defined (`payload?: unknown`), so replay is deliberately
 tolerant: it recognizes `{ value }`, `{ next }`, `{ to }` and bare payloads for
 signals, and `{ patch }`, `{ state }`, `{ next }` or a plain object for stores.
-When a payload cannot be interpreted, the value is reported as *not recorded*
+When a payload cannot be interpreted, the value is reported as _not recorded_
 and the previous value is kept — the panel never invents state, and the UI
 labels every row as `replayed`, `unchanged` or `not recorded`.
 

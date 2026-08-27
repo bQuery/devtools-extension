@@ -9,6 +9,7 @@
  */
 import { extensionApi, hasExtensionApi } from '../../browser';
 import { el, replaceChildren } from '../dom';
+import { emptyMessage } from '../features';
 import { buildSelectExpression, flattenTree, nodeAtPath, parsePathKey, pathKey } from '../tree';
 import { defineElement, PanelElement } from './base';
 
@@ -79,16 +80,45 @@ export class ComponentTreeView extends PanelElement {
     // Only push a value the user did not type themselves, so an in-progress
     // edit (and its caret) is never disturbed.
     if (searchInput.value !== search) searchInput.value = search;
-    this.countLabel.textContent = search ? `${flat.length} matching` : `${flat.length} components`;
+
+    // A page whose bridge answers `getSnapshot` but not `getComponentTree`
+    // still knows which components are mounted — it just cannot say how they
+    // nest. Show that flat registry rather than an empty panel.
+    const needle = search.toLowerCase();
+    const registry =
+      nodes.length === 0
+        ? state.components.value.filter(item => item.tagName.toLowerCase().includes(needle))
+        : [];
+    const usingRegistry = registry.length > 0;
+    const shown = usingRegistry ? registry.length : flat.length;
+
+    this.countLabel.textContent = search ? `${shown} matching` : `${shown} components`;
 
     const rows: Node[] = [];
-    if (flat.length === 0) {
+    if (usingRegistry) {
+      rows.push(
+        el('p', {
+          class: 'muted',
+          text: 'No component tree from this page; showing the components it does report.',
+        })
+      );
+      for (const item of registry) {
+        rows.push(
+          el('div', { class: 'tree-row is-flat', attrs: { role: 'treeitem' } }, [
+            el('span', { class: 'tree-tag', text: `<${item.tagName}>` }),
+            el('span', { class: 'tree-count', text: `${item.instanceCount}` }),
+          ])
+        );
+      }
+    } else if (flat.length === 0) {
       rows.push(
         el('p', {
           class: 'empty',
-          text: state.supports('components')
-            ? 'No custom elements found on the page.'
-            : 'The page does not advertise the "components" capability.',
+          text: emptyMessage(
+            state.feature('components'),
+            'a component tree',
+            'No custom elements found on the page.'
+          ),
         })
       );
     }

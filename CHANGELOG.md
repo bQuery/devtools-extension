@@ -28,6 +28,13 @@ It replaces the untyped reference scaffold that used to live in the framework's
   search, pause and clear.
 - Time travel: replay signal and store state as of any recorded event,
   reconstructed from the connect-time snapshot.
+- Graceful degradation against partially implemented bQuery apps: capabilities
+  advertised in the handshake are a hint, and every section is graded on what
+  the page actually answers. Sections load independently, a capability the page
+  never advertised is probed once, a snapshot that omits a collection reads as
+  "not reported" rather than empty, a missing `getComponentTree` falls back to
+  the flat component registry, and a page speaking a newer protocol version is
+  named as incompatible instead of leaving the panel waiting.
 - Two transports behind one interface — a permission-free
   `inspectedWindow.eval` poller (default) and an opt-in push transport over an
   injected content script — so the extension ships with **no host permissions**.

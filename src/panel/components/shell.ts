@@ -1,9 +1,10 @@
 /**
  * `<bq-panel>` — the panel shell: status bar plus tabbed views.
  *
- * Tabs whose capability the page did not advertise stay visible but are
- * marked unsupported, so the user can tell "the app has no stores" apart from
- * "this panel cannot show stores".
+ * Every tab stays visible and reachable. One whose section the page has
+ * *proved* it cannot serve is marked unsupported, so the user can tell "the
+ * app has no stores" apart from "this page cannot report stores" — a
+ * distinction that matters when only part of bQuery is loaded.
  *
  * @module panel/components/shell
  */
@@ -74,7 +75,6 @@ export class PanelShell extends PanelElement {
 
   protected render(): void {
     const state = this.state;
-    const capabilities = state.bridge.capabilities.value;
 
     const statusBar = document.createElement('bq-status-bar') as StatusBar;
     statusBar.onUpgrade = this.onUpgrade;
@@ -84,7 +84,11 @@ export class PanelShell extends PanelElement {
       'div',
       { class: 'tabs', attrs: { role: 'tablist' } },
       TABS.map(tab => {
-        const supported = capabilities.size === 0 || capabilities.has(tab.capability);
+        // Only a proven-unavailable section is marked: a capability the page
+        // did not advertise may still answer, so it is not written off before
+        // it has been tried.
+        const feature = state.feature(tab.capability);
+        const supported = feature.status !== 'unsupported';
         return el('button', {
           class: `tab${tab.id === this.activeTab ? ' is-active' : ''}${supported ? '' : ' is-unsupported'}`,
           text: tab.label,
@@ -92,7 +96,9 @@ export class PanelShell extends PanelElement {
             type: 'button',
             role: 'tab',
             'aria-selected': String(tab.id === this.activeTab),
-            ...(supported ? {} : { title: `The page does not advertise "${tab.capability}"` }),
+            ...(supported
+              ? {}
+              : { title: `This page cannot serve "${tab.capability}": ${feature.detail}` }),
           },
           on: {
             click: () => {

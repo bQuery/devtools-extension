@@ -9,6 +9,7 @@
  */
 import type { TimelineEntry } from '../../protocol/messages';
 import { el, formatTime, replaceChildren } from '../dom';
+import { emptyMessage } from '../features';
 import { collectTypes, filterEntries, MAX_BUFFER_SIZE, MIN_BUFFER_SIZE } from '../timeline';
 import { defineElement, PanelElement } from './base';
 // Registers <bq-value>, which the rows below instantiate.
@@ -203,7 +204,7 @@ export class TimelineView extends PanelElement {
     const state = this.state;
     const chrome = this.chrome;
     if (!chrome) return;
-    const supported = state.supports('time-travel');
+    const supported = state.canTimeTravel();
     const disabled = total === 0 || !supported;
     const index = travelIndex ?? total - 1;
     const replay = state.reconstruction.value;
@@ -216,7 +217,9 @@ export class TimelineView extends PanelElement {
     range.disabled = disabled;
     liveButton.disabled = travelIndex === null;
     scrubberStatus.textContent = !supported
-      ? 'The page does not advertise the "time-travel" capability.'
+      ? total === 0
+        ? 'Nothing recorded yet to replay.'
+        : 'No snapshot to replay onto: this page reports neither signals nor stores.'
       : replay
         ? `@ ${formatTime(replay.timestamp)} · ${replay.appliedCount} applied${
             replay.unresolvedCount > 0 ? ` · ${replay.unresolvedCount} not recorded` : ''
@@ -241,9 +244,11 @@ export class TimelineView extends PanelElement {
       list.appendChild(
         el('p', {
           class: 'empty',
-          text: state.supports('timeline')
-            ? 'No events recorded yet. Interact with the page to see reactive activity.'
-            : 'The page does not advertise the "timeline" capability.',
+          text: emptyMessage(
+            state.feature('timeline'),
+            'a timeline',
+            'No events recorded yet. Interact with the page to see reactive activity.'
+          ),
         })
       );
       return list;
@@ -306,7 +311,7 @@ export class TimelineView extends PanelElement {
           details.appendChild(value);
           value.setValue(entry.payload, 'payload');
         }
-        if (bufferIndex >= 0 && state.supports('time-travel')) {
+        if (bufferIndex >= 0 && state.canTimeTravel()) {
           details.appendChild(
             el('button', {
               class: 'btn',

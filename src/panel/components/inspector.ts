@@ -9,6 +9,7 @@
  * @module panel/components/inspector
  */
 import { el, replaceChildren } from '../dom';
+import { emptyMessage } from '../features';
 import { defineElement, PanelElement } from './base';
 // Registers <bq-value>, which the rows below instantiate.
 import './valueView';
@@ -83,9 +84,11 @@ export class InspectorView extends PanelElement {
       body.appendChild(
         el('p', {
           class: 'empty',
-          text: state.supports(capability)
-            ? `No ${this.kind} reported by the page.`
-            : `The page does not advertise the "${capability}" capability.`,
+          text: emptyMessage(
+            state.feature(capability),
+            this.kind,
+            `No ${this.kind} reported by the page.`
+          ),
         })
       );
     }

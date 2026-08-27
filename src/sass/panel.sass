@@ -51,7 +51,7 @@ bq-status-bar
     color: var(--ok)
   &.status-error, &.status-disconnected
     color: var(--error)
-  &.status-connecting, &.status-waiting-for-page
+  &.status-connecting, &.status-waiting-for-page, &.status-incompatible
     color: var(--warn)
 
 .status-message
@@ -74,6 +74,11 @@ bq-status-bar
     background: var(--accent-soft)
   &.is-off
     opacity: 0.55
+  // A section that should work and did not — distinct from one the page
+  // simply does not have.
+  &.is-warn
+    color: var(--warn)
+    border-color: var(--warn)
 
 // --- controls --------------------------------------------------------------
 
@@ -204,6 +209,12 @@ input[type='search'], input[type='number']
     background: var(--accent-soft)
   &.is-match .tree-tag
     text-decoration: underline
+  // The flat fallback is a listing, not a target: nothing to reveal in the
+  // Elements panel, so it must not look clickable.
+  &.is-flat
+    cursor: default
+    &:hover
+      background: transparent
 
 .tree-tag
   @include monospace

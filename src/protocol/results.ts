@@ -29,6 +29,20 @@ export interface ComponentView {
   readonly instanceCount: number;
 }
 
+/**
+ * Which top-level collections a snapshot actually carried.
+ *
+ * An app that loads `reactive` but not `store` produces a snapshot with no
+ * usable `stores` array. "Absent" and "empty" mean different things to a
+ * reader — *the page does not report stores* versus *the page has no stores* —
+ * so the two are kept apart here instead of both collapsing to `[]`.
+ */
+export interface SnapshotPresence {
+  readonly signals: boolean;
+  readonly stores: boolean;
+  readonly components: boolean;
+}
+
 /** Normalized `getSnapshot` result. */
 export interface SnapshotView {
   readonly signals: readonly SignalView[];
@@ -36,6 +50,8 @@ export interface SnapshotView {
   readonly components: readonly ComponentView[];
   readonly timeline: readonly TimelineEntry[];
   readonly exportedAt: number;
+  /** Which collections the page reported at all. */
+  readonly reported: SnapshotPresence;
 }
 
 /** Normalized `getComponentTree` result. */
@@ -106,8 +122,18 @@ export const parseEntry = (value: unknown): TimelineEntry | null => {
   return entry as unknown as TimelineEntry;
 };
 
-/** Narrow a `getTimeline` result. */
+/** Narrow a timeline array wherever one is embedded (e.g. inside a snapshot). */
 export const parseTimeline = (value: unknown): TimelineEntry[] => parseArray(value, parseEntry);
+
+/**
+ * Narrow a `getTimeline` *result*.
+ *
+ * `null` when the page answered with something that is not a list at all —
+ * which the caller reads as "this page cannot serve a timeline", as opposed to
+ * an empty list, which means "nothing has happened yet".
+ */
+export const parseTimelineResult = (value: unknown): TimelineEntry[] | null =>
+  Array.isArray(value) ? parseArray(value, parseEntry) : null;
 
 /**
  * Narrow a `DevtoolsSnapshot` as produced by `exportDevtoolsSnapshot()`.
@@ -126,6 +152,11 @@ export const parseSnapshot = (value: unknown): SnapshotView | null => {
     components: parseArray(value['components'], parseComponent),
     timeline: parseTimeline(state['timeline']),
     exportedAt: toNumber(value['exportedAt'], Date.now()),
+    reported: {
+      signals: Array.isArray(value['signals']),
+      stores: Array.isArray(value['stores']),
+      components: Array.isArray(value['components']),
+    },
   };
 };
 
@@ -155,9 +186,15 @@ const parseTreeNode = (value: unknown, depth = 0): ComponentTreeNode | null => {
   return { tag, id: toStringValue(value['id']), attrs, children };
 };
 
-/** Narrow a `getComponentTree` result. */
-export const parseComponentTree = (value: unknown): ComponentTreeView => {
-  if (!isRecord(value)) return { tree: [], flat: [] };
+/**
+ * Narrow a `getComponentTree` result; `null` when it is not a result at all.
+ *
+ * A page that answers `undefined` (or a string, or a number) has not given the
+ * panel a tree — reporting that as an empty tree would claim, wrongly, that
+ * the page has no components.
+ */
+export const parseComponentTree = (value: unknown): ComponentTreeView | null => {
+  if (!isRecord(value) || Array.isArray(value)) return null;
   const tree: ComponentTreeNode[] = [];
   if (Array.isArray(value['tree'])) {
     for (const node of value['tree']) {

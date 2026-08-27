@@ -73,6 +73,14 @@ interface FixtureData {
   tree: unknown;
   timeline: unknown;
   capabilities: readonly string[];
+  /**
+   * Bridge methods this page implements. Anything outside the list answers
+   * `Unknown method`, exactly as `createBridgeServer` does — which is how a
+   * partially implemented bridge behaves. Defaults to all of them.
+   */
+  methods?: readonly string[];
+  /** Protocol version the page speaks. Defaults to the v1 the panel expects. */
+  version?: number;
 }
 
 /**
@@ -137,8 +145,11 @@ export const installFixture = (data: FixtureData): void => {
   // --- page-side bridge server (protocol v1) --------------------------------
 
   const post = (message: Record<string, unknown>): void => {
-    window.postMessage({ source: SOURCE, channel: 'page', v: 1, ...message }, '*');
+    window.postMessage({ source: SOURCE, channel: 'page', v: data.version ?? 1, ...message }, '*');
   };
+
+  /** `undefined` means "every built-in", matching a complete bridge server. */
+  const implemented = (name: string): boolean => !data.methods || data.methods.indexOf(name) >= 0;
 
   /**
    * Answer one bridge method.
@@ -152,6 +163,7 @@ export const installFixture = (data: FixtureData): void => {
    * in for.
    */
   const answer = (name: string): { known: true; result: unknown } | { known: false } => {
+    if (!implemented(name)) return { known: false };
     switch (name) {
       case 'ping':
         return { known: true, result: { v: 1, ok: true } };

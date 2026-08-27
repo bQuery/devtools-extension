@@ -8,7 +8,8 @@
  * @module panel/components/statusBar
  */
 import { el, replaceChildren } from '../dom';
-import { KNOWN_CAPABILITIES } from '../../protocol/messages';
+import { KNOWN_CAPABILITIES, unknownCapabilities } from '../../protocol/messages';
+import { featureTitle } from '../features';
 import { defineElement, PanelElement } from './base';
 
 /** Labels for each connection state. */
@@ -17,6 +18,7 @@ const STATE_LABEL: Record<string, string> = {
   connecting: 'Connecting…',
   'waiting-for-page': 'Waiting for the page',
   connected: 'Connected',
+  incompatible: 'Incompatible protocol',
   disconnected: 'Disconnected',
   error: 'Error',
 };
@@ -31,19 +33,24 @@ export class StatusBar extends PanelElement {
   protected render(): void {
     const state = this.state;
     const connection = state.bridge.state.value;
-    const capabilities = state.bridge.capabilities.value;
     const detail = state.bridge.detail.value;
     const error = state.lastError.value;
 
-    const badges = KNOWN_CAPABILITIES.map(capability =>
-      el('span', {
-        class: `badge${capabilities.has(capability) ? ' is-on' : ' is-off'}`,
+    // Badges report what the page *did*, not what it claimed: a capability it
+    // advertised but cannot serve reads as off, and one it never advertised
+    // but answers anyway reads as on.
+    const badges = KNOWN_CAPABILITIES.map(capability => {
+      const feature = state.feature(capability);
+      const on =
+        capability === 'time-travel' ? state.canTimeTravel() : feature.status === 'available';
+      return el('span', {
+        class: `badge${on ? ' is-on' : feature.status === 'failed' ? ' is-warn' : ' is-off'}`,
         text: capability,
-        title: capabilities.has(capability)
-          ? `The page supports "${capability}"`
-          : `The page did not advertise "${capability}"`,
-      })
-    );
+        title: featureTitle(capability, feature),
+      });
+    });
+
+    const foreign = unknownCapabilities(state.bridge.advertised.value);
 
     const children: Node[] = [
       el('span', {
@@ -59,8 +66,21 @@ export class StatusBar extends PanelElement {
           : 'Events are polled through the DevTools evaluation channel (no host permission needed).',
       }),
       ...badges,
-      el('span', { class: 'spacer' }),
     ];
+
+    if (foreign.length > 0) {
+      // The page offers something this build has no view for — the visible
+      // symptom of an extension older than the app it is inspecting.
+      children.push(
+        el('span', {
+          class: 'badge is-warn',
+          text: `+${foreign.length} unknown`,
+          title: `This page also advertises ${foreign.join(', ')}, which this version of the extension has no view for.`,
+        })
+      );
+    }
+
+    children.push(el('span', { class: 'spacer' }));
 
     if (!this.streaming && this.onUpgrade) {
       children.push(
@@ -88,7 +108,10 @@ export class StatusBar extends PanelElement {
         attrs: { type: 'button', ...(state.loading.value ? { disabled: 'true' } : {}) },
         on: {
           click: () => {
-            void state.refreshAll();
+            // An explicit refresh re-probes sections previously written off,
+            // so enabling devtools (or mounting a store) and pressing Refresh
+            // is enough to bring a section back without reopening the panel.
+            void state.refreshAll({ retry: true });
           },
         },
       })
