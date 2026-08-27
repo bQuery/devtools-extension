@@ -18,9 +18,20 @@ import type { ValueView } from './valueView';
 /** Most rows rendered at once; the buffer itself may hold far more. */
 const MAX_RENDERED_ROWS = 300;
 
+interface TimelineChrome {
+  readonly toolbarHost: HTMLElement;
+  readonly searchInput: HTMLInputElement;
+  readonly chipsHost: HTMLElement;
+  readonly range: HTMLInputElement;
+  readonly liveButton: HTMLButtonElement;
+  readonly scrubberStatus: HTMLElement;
+  readonly listHost: HTMLElement;
+}
+
 /** Timeline view. */
 export class TimelineView extends PanelElement {
   private expandedRow = -1;
+  private chrome: TimelineChrome | null = null;
 
   protected render(): void {
     const state = this.state;
@@ -33,12 +44,81 @@ export class TimelineView extends PanelElement {
     const visible = filterEntries(entries, filter);
     const rendered = visible.slice(-MAX_RENDERED_ROWS);
 
-    replaceChildren(this, [
-      this.toolbar(paused, entries.length),
-      this.filters(entries, filter),
-      this.scrubber(entries.length, travelIndex),
-      this.list(rendered, entries, visible.length),
+    this.buildChrome();
+    const chrome = this.chrome;
+    if (!chrome) return;
+
+    replaceChildren(chrome.toolbarHost, [this.toolbar(paused, entries.length)]);
+    this.updateFilters(entries, filter);
+    this.updateScrubber(entries.length, travelIndex);
+    replaceChildren(chrome.listHost, [this.list(rendered, entries, visible.length)]);
+  }
+
+  /**
+   * Build the parts that must survive a re-render.
+   *
+   * `render()` reads the very signals these controls write, so rebuilding them
+   * would detach whatever the user is interacting with: the search field loses
+   * its caret after one keystroke, and the scrubber's drag ends the moment it
+   * moves. Their containers are created once and only their contents change.
+   */
+  private buildChrome(): void {
+    if (this.chrome) return;
+    const state = this.state;
+
+    const toolbarHost = el('div');
+    const searchInput = el('input', {
+      class: 'tree-search',
+      attrs: {
+        type: 'search',
+        placeholder: 'Filter events…',
+        'aria-label': 'Filter timeline events',
+      },
+      on: {
+        input: event => {
+          const target = event.target as HTMLInputElement;
+          const current = state.timelineFilter.value;
+          state.timelineFilter.value = { types: current.types, search: target.value };
+        },
+      },
+    });
+    const chipsHost = el('div', { class: 'chips' });
+    const range = el('input', {
+      class: 'scrubber-range',
+      attrs: { type: 'range', min: '0', 'aria-label': 'Replay position' },
+      on: {
+        input: event => {
+          const target = event.target as HTMLInputElement;
+          state.travelTo(Number(target.value));
+        },
+      },
+    });
+    const liveButton = el('button', {
+      class: 'btn',
+      text: 'Live',
+      attrs: { type: 'button' },
+      on: { click: () => state.resumeLive() },
+    });
+    const scrubberStatus = el('span', { class: 'muted' });
+    const listHost = el('div');
+
+    const filtersRow = el('div', { class: 'timeline-filters' }, [searchInput, chipsHost]);
+    const scrubberRow = el('div', { class: 'scrubber' }, [
+      el('label', { class: 'field scrubber-field' }, [el('span', { text: 'Time travel' }), range]),
+      liveButton,
+      scrubberStatus,
     ]);
+
+    this.chrome = {
+      toolbarHost,
+      searchInput,
+      chipsHost,
+      range,
+      liveButton,
+      scrubberStatus,
+      listHost,
+    };
+    replaceChildren(this, [toolbarHost, filtersRow, scrubberRow, listHost]);
   }
 
   private toolbar(paused: boolean, bufferedCount: number): Node {
@@ -89,12 +169,16 @@ export class TimelineView extends PanelElement {
     ]);
   }
 
-  private filters(
+  private updateFilters(
     entries: readonly TimelineEntry[],
     filter: { types: ReadonlySet<string>; search: string }
-  ): Node {
+  ): void {
     const state = this.state;
+    const chrome = this.chrome;
+    if (!chrome) return;
     const types = collectTypes(entries);
+
+    if (chrome.searchInput.value !== filter.search) chrome.searchInput.value = filter.search;
 
     const chips = types.map(type =>
       el('button', {
@@ -112,71 +196,32 @@ export class TimelineView extends PanelElement {
       })
     );
 
-    return el('div', { class: 'timeline-filters' }, [
-      el('input', {
-        class: 'tree-search',
-        attrs: {
-          type: 'search',
-          placeholder: 'Filter events…',
-          value: filter.search,
-          'aria-label': 'Filter timeline events',
-        },
-        on: {
-          input: event => {
-            const target = event.target as HTMLInputElement;
-            state.timelineFilter.value = { types: filter.types, search: target.value };
-          },
-        },
-      }),
-      el('div', { class: 'chips' }, chips),
-    ]);
+    replaceChildren(chrome.chipsHost, chips);
   }
 
-  private scrubber(total: number, travelIndex: number | null): Node {
+  private updateScrubber(total: number, travelIndex: number | null): void {
     const state = this.state;
+    const chrome = this.chrome;
+    if (!chrome) return;
     const supported = state.supports('time-travel');
     const disabled = total === 0 || !supported;
     const index = travelIndex ?? total - 1;
     const replay = state.reconstruction.value;
 
-    return el('div', { class: 'scrubber' }, [
-      el('label', { class: 'field scrubber-field' }, [
-        el('span', { text: 'Time travel' }),
-        el('input', {
-          class: 'scrubber-range',
-          attrs: {
-            type: 'range',
-            min: '0',
-            max: String(Math.max(total - 1, 0)),
-            value: String(Math.max(index, 0)),
-            'aria-label': 'Replay position',
-            ...(disabled ? { disabled: 'true' } : {}),
-          },
-          on: {
-            input: event => {
-              const target = event.target as HTMLInputElement;
-              state.travelTo(Number(target.value));
-            },
-          },
-        }),
-      ]),
-      el('button', {
-        class: 'btn',
-        text: 'Live',
-        attrs: { type: 'button', ...(travelIndex === null ? { disabled: 'true' } : {}) },
-        on: { click: () => state.resumeLive() },
-      }),
-      el('span', {
-        class: 'muted',
-        text: !supported
-          ? 'The page does not advertise the "time-travel" capability.'
-          : replay
-            ? `@ ${formatTime(replay.timestamp)} · ${replay.appliedCount} applied${
-                replay.unresolvedCount > 0 ? ` · ${replay.unresolvedCount} not recorded` : ''
-              }`
-            : 'Following live state',
-      }),
-    ]);
+    const { range, liveButton, scrubberStatus } = chrome;
+    range.max = String(Math.max(total - 1, 0));
+    // Leave the thumb alone while it is being dragged, or the value written
+    // back mid-gesture fights the pointer.
+    if (document.activeElement !== range) range.value = String(Math.max(index, 0));
+    range.disabled = disabled;
+    liveButton.disabled = travelIndex === null;
+    scrubberStatus.textContent = !supported
+      ? 'The page does not advertise the "time-travel" capability.'
+      : replay
+        ? `@ ${formatTime(replay.timestamp)} · ${replay.appliedCount} applied${
+            replay.unresolvedCount > 0 ? ` · ${replay.unresolvedCount} not recorded` : ''
+          }`
+        : 'Following live state';
   }
 
   private list(

@@ -93,8 +93,17 @@ if you need it, keep the key outside CI.
    - *Category*: Developer Tools.
    - *Screenshots*: the panel on a page running a bQuery app — component tree,
      signals, and timeline are the three that matter.
-   - *Privacy*: the extension collects and transmits **nothing**. Declare no
-     data collection.
+   - *Privacy*: be precise here, because "collects nothing" is the wrong
+     answer. Chrome Web Store policy counts **website content** as user data,
+     and the panel reads plenty of it — the component tree, signal and store
+     values, and timeline entries from the inspected page. What the extension
+     does *not* do is send any of it anywhere: everything stays in the DevTools
+     process on the user's machine, there is no remote endpoint, and the only
+     thing written to `chrome.storage.local` is the panel's own preferences
+     (buffer size, poll interval, live-streaming toggle). Declare handling of
+     website content, declare no transmission, and answer the certification
+     questions accordingly — the extension neither sells data nor uses it for
+     anything beyond the panel's displayed purpose.
 4. Justify the permissions. Reviewers ask about these two:
    - `scripting` — "injects a small relay into the inspected tab, only after
      the user explicitly enables live streaming and grants that site's origin";

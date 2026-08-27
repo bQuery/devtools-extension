@@ -85,7 +85,22 @@ const render = (): void => {
   });
 };
 
-void loadSettings().then(settings => {
-  current.value = settings;
-  render();
-});
+void loadSettings()
+  .then(settings => {
+    current.value = settings;
+    render();
+  })
+  .catch((error: unknown) => {
+    // `render()` throws when the host element is missing. Without this the
+    // options page would stay blank with the reason only in an unhandled
+    // rejection nobody sees.
+    console.error('bQuery DevTools: the options page failed to render', error);
+    const host = document.getElementById(HOST_ID) ?? document.body;
+    $(host)
+      .empty()
+      .append(
+        safeHtml`<p class="status-message">Could not load the options page: ${
+          error instanceof Error ? error.message : String(error)
+        }</p>`
+      );
+  });

@@ -12,21 +12,28 @@ import { el, replaceChildren } from '../dom';
 import { buildSelectExpression, flattenTree, nodeAtPath, parsePathKey, pathKey } from '../tree';
 import { defineElement, PanelElement } from './base';
 
-/** Component tree view. */
+/**
+ * Component tree view.
+ *
+ * The toolbar is built once and never re-created. `render()` reads the search
+ * signal that the input's own handler writes, so rebuilding the whole subtree
+ * would detach the focused field on the first keystroke and silently swallow
+ * everything the user typed after it. Only the list below is rebuilt.
+ */
 export class ComponentTreeView extends PanelElement {
-  protected render(): void {
-    const state = this.state;
-    const search = state.treeSearch.value;
-    const nodes = state.tree.value;
-    const selected = state.selectedPath.value;
-    const flat = flattenTree(nodes, search);
+  private searchInput: HTMLInputElement | null = null;
+  private countLabel: HTMLElement | null = null;
+  private listHost: HTMLElement | null = null;
 
-    const searchInput = el('input', {
+  private buildChrome(): void {
+    if (this.listHost) return;
+    const state = this.state;
+
+    this.searchInput = el('input', {
       class: 'tree-search',
       attrs: {
         type: 'search',
         placeholder: 'Filter by tag or attribute…',
-        value: search,
         'aria-label': 'Filter components',
       },
       on: {
@@ -36,13 +43,12 @@ export class ComponentTreeView extends PanelElement {
         },
       },
     });
+    this.countLabel = el('span', { class: 'muted' });
+    this.listHost = el('div', { class: 'tree-list', attrs: { role: 'tree' } });
 
     const header = el('div', { class: 'view-toolbar' }, [
-      searchInput,
-      el('span', {
-        class: 'muted',
-        text: search ? `${flat.length} matching` : `${flat.length} components`,
-      }),
+      this.searchInput,
+      this.countLabel,
       el('button', {
         class: 'btn',
         text: 'Refresh',
@@ -55,9 +61,29 @@ export class ComponentTreeView extends PanelElement {
       }),
     ]);
 
-    const list = el('div', { class: 'tree-list', attrs: { role: 'tree' } });
+    replaceChildren(this, [header, this.listHost]);
+  }
+
+  protected render(): void {
+    const state = this.state;
+    const search = state.treeSearch.value;
+    const nodes = state.tree.value;
+    const selected = state.selectedPath.value;
+    const flat = flattenTree(nodes, search);
+
+    this.buildChrome();
+    const searchInput = this.searchInput;
+    const list = this.listHost;
+    if (!searchInput || !list || !this.countLabel) return;
+
+    // Only push a value the user did not type themselves, so an in-progress
+    // edit (and its caret) is never disturbed.
+    if (searchInput.value !== search) searchInput.value = search;
+    this.countLabel.textContent = search ? `${flat.length} matching` : `${flat.length} components`;
+
+    const rows: Node[] = [];
     if (flat.length === 0) {
-      list.appendChild(
+      rows.push(
         el('p', {
           class: 'empty',
           text: state.supports('components')
@@ -96,10 +122,10 @@ export class ComponentTreeView extends PanelElement {
       if (item.node.children.length > 0) {
         row.appendChild(el('span', { class: 'tree-count', text: `${item.node.children.length}` }));
       }
-      list.appendChild(row);
+      rows.push(row);
     }
 
-    replaceChildren(this, [header, list]);
+    replaceChildren(list, rows);
   }
 
   /** Reveal the node in the page's Elements panel. */

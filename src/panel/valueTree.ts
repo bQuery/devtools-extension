@@ -96,6 +96,32 @@ export const describeValue = (value: unknown): DescribedValue => {
         entries,
       };
     }
+    // Built-ins carry their data outside own enumerable keys, so the generic
+    // path below would describe every one of them as an empty `{}` and hide
+    // real store and signal contents.
+    if (value instanceof Date) {
+      return { kind: 'object', preview: value.toISOString(), entries: null };
+    }
+    if (value instanceof RegExp || value instanceof Error) {
+      return { kind: 'object', preview: truncate(String(value)), entries: null };
+    }
+    if (value instanceof Map) {
+      const items = [...value.entries()].slice(0, ENTRY_LIMIT);
+      return {
+        kind: 'object',
+        preview: truncate(`Map(${value.size})`),
+        entries: items.map(([key, item]) => ({ key: shortPreview(key), value: item })),
+      };
+    }
+    if (value instanceof Set) {
+      const items = [...value.values()].slice(0, ENTRY_LIMIT);
+      return {
+        kind: 'object',
+        preview: truncate(`Set(${value.size})`),
+        entries: items.map((item, index) => ({ key: String(index), value: item })),
+      };
+    }
+
     const record = value as Record<string, unknown>;
     const keys = Object.keys(record).slice(0, ENTRY_LIMIT);
     const entries = keys.map(key => ({ key, value: record[key] }));

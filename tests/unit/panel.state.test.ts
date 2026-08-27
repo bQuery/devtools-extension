@@ -164,7 +164,7 @@ describe('streaming', () => {
     expect(state.timeTravelIndex.value).toBeNull();
   });
 
-  test('resizing the buffer clamps an out-of-range replay position', async () => {
+  test('resizing the buffer keeps an in-range replay position', async () => {
     await connect();
     for (let index = 0; index < 10; index += 1) {
       transport.event({ type: 'signal:update', detail: `#${index}`, timestamp: index });
@@ -172,9 +172,21 @@ describe('streaming', () => {
     state.travelTo(9);
     state.setBufferSize(50);
     expect(state.bufferCapacity()).toBe(50);
-    // 50 is below MIN_BUFFER_SIZE-clamped range only if smaller; here the
-    // buffer still holds every entry, so the position survives.
+    // The buffer still holds every entry, so the position is untouched.
     expect(state.timeTravelIndex.value).toBe(9);
+  });
+
+  test('shrinking the buffer past the replay position clamps it', async () => {
+    await connect();
+    // More than MIN_BUFFER_SIZE entries, or the capacity cannot drop below
+    // the number buffered and the clamping branch stays unreachable.
+    for (let index = 0; index < 60; index += 1) {
+      transport.event({ type: 'signal:update', detail: `#${index}`, timestamp: index });
+    }
+    state.travelTo(59);
+    state.setBufferSize(50);
+    expect(state.entries()).toHaveLength(50);
+    expect(state.timeTravelIndex.value).toBe(49);
   });
 });
 
@@ -196,7 +208,8 @@ describe('time travel', () => {
     transport.event({
       type: 'signal:update',
       detail: 'count',
-      timestamp: 2,
+      // After `snapshot.exportedAt`, so the replay base does not supersede it.
+      timestamp: snapshot.exportedAt + 1,
       source: 'count',
       payload: { value: 42 },
     });

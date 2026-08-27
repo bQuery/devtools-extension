@@ -95,6 +95,14 @@ export class BridgeClient {
 
   private nextRequestId = 1;
   private helloTimer: number | null = null;
+  /**
+   * Set only by an `init` reply. The hello loop is driven by this rather than
+   * by the displayed state: a page that streams an event before its handshake
+   * reply arrives would otherwise stop the retries with no capabilities
+   * negotiated, leaving every capability-gated view reporting "unsupported"
+   * while the status bar claims the panel is connected.
+   */
+  private handshakeComplete = false;
   private disposed = false;
   private started = false;
 
@@ -147,6 +155,7 @@ export class BridgeClient {
    */
   public resetHandshake(reason = 'page navigated'): void {
     if (this.disposed) return;
+    this.handshakeComplete = false;
     this.rejectAllPending(new Error(`bQuery DevTools: ${reason}`));
     this.capabilities.value = new Set<BridgeCapability>();
     this.state.value = 'waiting-for-page';
@@ -201,6 +210,7 @@ export class BridgeClient {
         this.scheduleHello(true);
         return;
       case 'closed':
+        this.handshakeComplete = false;
         this.cancelHello();
         this.rejectAllPending(new Error(`bQuery DevTools: ${status.reason}`));
         this.capabilities.value = new Set<BridgeCapability>();
@@ -208,6 +218,7 @@ export class BridgeClient {
         this.detail.value = status.reason;
         return;
       case 'error':
+        this.handshakeComplete = false;
         this.cancelHello();
         this.rejectAllPending(new Error(`bQuery DevTools: ${status.reason}`));
         this.state.value = 'error';
@@ -224,6 +235,7 @@ export class BridgeClient {
     switch (message.kind) {
       case 'init': {
         const negotiated = negotiateCapabilities(message.capabilities);
+        this.handshakeComplete = true;
         this.cancelHello();
         this.capabilities.value = negotiated;
         this.state.value = 'connected';
@@ -244,7 +256,9 @@ export class BridgeClient {
         return;
       }
       case 'event': {
-        // A streamed event also proves the page is alive: stop retrying hello.
+        // A streamed event proves the page is alive, so surface that — but it
+        // is not a handshake, so the hello retries deliberately continue until
+        // `init` answers with the capability list.
         if (this.state.value !== 'connected') this.state.value = 'connected';
         for (const listener of this.eventListeners) listener(message.entry);
         return;
@@ -255,7 +269,7 @@ export class BridgeClient {
   private scheduleHello(immediate: boolean): void {
     this.cancelHello();
     const fire = (): void => {
-      if (this.disposed || this.state.value === 'connected') return;
+      if (this.disposed || this.handshakeComplete) return;
       this.transport.send(helloMessage());
       this.helloTimer = this.setTimer(fire, this.helloIntervalMs);
     };

@@ -60,7 +60,7 @@ jobs:
       # artifact: signing is a service, not a local key operation. Without
       # credentials the release still ships the unsigned zip for manual upload.
       - name: Sign the Firefox build (AMO)
-        if: env.AMO_JWT_ISSUER != ''
+        if: env.AMO_JWT_ISSUER != '' && env.AMO_JWT_SECRET != ''
         run: |
           bunx web-ext@8 sign \
             --source-dir dist \

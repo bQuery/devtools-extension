@@ -9,7 +9,6 @@
  * @module panel/components/inspector
  */
 import { el, replaceChildren } from '../dom';
-import { UNKNOWN_VALUE } from '../timeTravel';
 import { defineElement, PanelElement } from './base';
 // Registers <bq-value>, which the rows below instantiate.
 import './valueView';
@@ -45,8 +44,11 @@ export class InspectorView extends PanelElement {
     } else {
       const entries = replay
         ? replay.stores.map(item => ({
+            // `reconstructAt` keeps the last known state when a patch is
+            // unusable, so show it and let the badge say it is unresolved —
+            // the same contract the signals branch above follows.
             key: item.id,
-            value: item.unresolved ? UNKNOWN_VALUE : item.state,
+            value: item.state as unknown,
             meta: item.unresolved ? 'not recorded' : item.fromBase ? 'unchanged' : 'replayed',
           }))
         : state.stores.value.map(item => ({

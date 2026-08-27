@@ -80,6 +80,47 @@ export type Evaluator = (
   callback: (result: unknown, exceptionInfo?: unknown) => void
 ) => void;
 
+/**
+ * Evaluate through whichever shape the browser implements.
+ *
+ * Chromium's `chrome.devtools.inspectedWindow.eval(expression, callback)` is
+ * callback-based. Firefox's `browser.*` namespace is promisified and treats the
+ * second argument as *options*, resolving to a `[result, exceptionInfo]` pair —
+ * so passing a callback there means it is never called, the transport never
+ * leaves `connecting`, and every request times out.
+ *
+ * Both are normalized onto the callback contract the transport expects.
+ */
+const defaultEvaluator: Evaluator = (expression, callback) => {
+  const inspectedWindow = extensionApi().devtools.inspectedWindow;
+  let settled = false;
+  const settle = (result: unknown, exceptionInfo?: unknown): void => {
+    if (settled) return;
+    settled = true;
+    callback(result, exceptionInfo);
+  };
+
+  const returned: unknown = (
+    inspectedWindow.eval as unknown as (
+      expression: string,
+      callback?: (result: unknown, exceptionInfo?: unknown) => void
+    ) => unknown
+  )(expression, settle);
+
+  // Firefox returns a thenable and ignores the callback; Chromium returns
+  // undefined and invokes it. Whichever answers first wins, so a browser that
+  // does both cannot deliver the same result twice.
+  if (returned && typeof (returned as PromiseLike<unknown>).then === 'function') {
+    void Promise.resolve(returned).then(
+      value => {
+        const pair = Array.isArray(value) ? value : [value, undefined];
+        settle(pair[0], pair[1]);
+      },
+      (error: unknown) => settle(undefined, { isError: true, value: error })
+    );
+  }
+};
+
 const isFailure = (exceptionInfo: unknown): boolean => {
   if (!exceptionInfo || typeof exceptionInfo !== 'object') return false;
   const info = exceptionInfo as { isError?: unknown; isException?: unknown };
@@ -100,11 +141,7 @@ export class EvalTransport implements BridgeTransport {
   private lastFailure = '';
 
   constructor(options: EvalTransportOptions & { evaluate?: Evaluator } = {}) {
-    this.evaluate =
-      options.evaluate ??
-      ((expression, callback) => {
-        extensionApi().devtools.inspectedWindow.eval(expression, callback);
-      });
+    this.evaluate = options.evaluate ?? defaultEvaluator;
     this.pollIntervalMs = options.pollIntervalMs ?? DEFAULT_POLL_INTERVAL_MS;
     this.drainExpression = buildDrainExpression(options.queueLimit ?? DEFAULT_QUEUE_LIMIT);
   }

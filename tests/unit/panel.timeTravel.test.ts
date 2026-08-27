@@ -9,7 +9,10 @@ import {
   type TimeTravelBase,
 } from '../../src/panel/timeTravel';
 
-const entry = (type: string, source: string, payload?: unknown, timestamp = 0): TimelineEntry =>
+// Defaults to a timestamp *after* `base.capturedAt`: entries older than the
+// base are deliberately not replayed, and these cases are about payload
+// interpretation rather than clock ordering.
+const entry = (type: string, source: string, payload?: unknown, timestamp = 1001): TimelineEntry =>
   ({ timestamp, type, detail: source, source, payload }) as TimelineEntry;
 
 const base: TimeTravelBase = {
@@ -117,6 +120,23 @@ describe('reconstructAt', () => {
     const result = reconstructAt(base, [entry('store:patch', 'cart', 'garbage')], 0);
     expect(result.stores[0]).toMatchObject({ id: 'cart', unresolved: true });
     expect(result.stores[0]?.state).toEqual({ items: 0, open: false });
+  });
+
+  test('entries recorded before the base snapshot are not replayed', () => {
+    // The page's own timeline reaches back before the snapshot was taken.
+    // Replaying those would write a known-stale value over a measured one.
+    const stale = entry('signal:update', 'count', { value: 999 }, base.capturedAt - 1);
+    const result = reconstructAt(base, [stale], 0);
+    expect(result.signals.find(item => item.label === 'count')?.value).toBe(0);
+    expect(result.skippedCount).toBe(1);
+    expect(result.appliedCount).toBe(0);
+  });
+
+  test('an entry exactly at the base timestamp still replays', () => {
+    const boundary = entry('signal:update', 'count', { value: 7 }, base.capturedAt);
+    const result = reconstructAt(base, [boundary], 0);
+    expect(result.signals.find(item => item.label === 'count')?.value).toBe(7);
+    expect(result.skippedCount).toBe(0);
   });
 
   test('entries without a source or detail key are skipped', () => {

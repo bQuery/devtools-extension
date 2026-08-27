@@ -116,7 +116,9 @@ export const parseTimeline = (value: unknown): TimelineEntry[] => parseArray(val
  * have to know where the framework happens to keep it.
  */
 export const parseSnapshot = (value: unknown): SnapshotView | null => {
-  if (!isRecord(value)) return null;
+  // `isRecord` admits arrays, and an array result would parse into an
+  // all-empty snapshot that then wipes the panel's signals and stores.
+  if (!isRecord(value) || Array.isArray(value)) return null;
   const state = isRecord(value['state']) ? value['state'] : {};
   return {
     signals: parseArray(value['signals'], parseSignal),

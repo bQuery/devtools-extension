@@ -7,7 +7,7 @@ runs the app (and the bQuery bridge); the panel runs in the DevTools window.
 Everything between them is a message channel with an untrusted party on one
 end.
 
-```
+```text
 ┌─────────────────────────────────────────────────────────────────────┐
 │ inspected page                                                      │
 │   app code → connectDevtoolsBridge()  ← the stable contract (v1)    │

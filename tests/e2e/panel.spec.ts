@@ -210,6 +210,7 @@ test.describe('bQuery DevTools panel', () => {
     // the panel would then be handed `Object` as a result.
     const replies = await page.evaluate(async () => {
       const answers: unknown[] = [];
+      let settle = (): void => undefined;
       const collect = (event: MessageEvent): void => {
         const data = event.data as Record<string, unknown> | null;
         if (!data || data['source'] !== 'bquery-devtools' || data['kind'] !== 'response') return;
@@ -218,9 +219,18 @@ test.describe('bQuery DevTools panel', () => {
         // assertion race.
         if (typeof data['id'] !== 'number' || data['id'] < 9000) return;
         answers.push(data['error'] ?? data['result']);
+        settle();
       };
+      const methods = ['constructor', 'toString', '__proto__'];
+      // Settle on the expected count rather than a fixed delay: a slow task
+      // queue would otherwise make this assert against a partial result.
+      const collected = new Promise<void>(resolve => {
+        settle = () => {
+          if (answers.length >= methods.length) resolve();
+        };
+      });
       window.addEventListener('message', collect);
-      for (const [index, method] of ['constructor', 'toString', '__proto__'].entries()) {
+      for (const [index, method] of methods.entries()) {
         window.postMessage(
           {
             source: 'bquery-devtools',
@@ -233,7 +243,7 @@ test.describe('bQuery DevTools panel', () => {
           '*'
         );
       }
-      await new Promise(resolve => setTimeout(resolve, 200));
+      await Promise.race([collected, new Promise(resolve => setTimeout(resolve, 2000))]);
       window.removeEventListener('message', collect);
       return answers;
     });
@@ -242,6 +252,27 @@ test.describe('bQuery DevTools panel', () => {
     for (const reply of replies) {
       expect(String(reply)).toContain('Unknown method');
     }
+  });
+
+  test('interactive controls survive their own reactive re-render', async ({ page }) => {
+    await openPanel(page);
+
+    // Each of these writes the signal its own view reads, so a full-subtree
+    // re-render would detach the focused control mid-interaction. Typing
+    // character by character is what exposes it — `fill()` sets the value in
+    // one operation and passes either way.
+    const treeSearch = page.getByLabel('Filter components');
+    await treeSearch.click();
+    await page.keyboard.type('item', { delay: 20 });
+    await expect(treeSearch).toHaveValue('item');
+    await expect(page.locator('.tree-row')).toHaveCount(4);
+
+    await openTab(page, 'Timeline');
+    const eventSearch = page.getByLabel('Filter timeline events');
+    await eventSearch.click();
+    await page.keyboard.type('count', { delay: 20 });
+    await expect(eventSearch).toHaveValue('count');
+    await expect(page.locator('.timeline-row')).toHaveCount(1);
   });
 
   test('reports a page that never answers the handshake', async ({ page }) => {

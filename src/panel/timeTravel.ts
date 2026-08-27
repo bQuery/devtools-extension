@@ -49,6 +49,12 @@ export interface Reconstruction {
   readonly appliedCount: number;
   /** Number of replayed entries whose payload could not be interpreted. */
   readonly unresolvedCount: number;
+  /**
+   * Number of entries older than the base snapshot, which are therefore not
+   * replayed. The page's own timeline can reach back before the snapshot was
+   * taken; applying those would write stale values over newer measured ones.
+   */
+  readonly skippedCount: number;
 }
 
 /** The base state time travel replays from. */
@@ -140,10 +146,18 @@ export const reconstructAt = (
 
   let appliedCount = 0;
   let unresolvedCount = 0;
+  let skippedCount = 0;
 
   for (let cursor = 0; cursor <= upto; cursor += 1) {
     const entry = entries[cursor];
     if (!entry || !isReplayable(entry)) continue;
+    // The base is a measurement taken at `capturedAt`; an entry recorded
+    // before it describes a state the snapshot already supersedes. Replaying
+    // it would move a signal *backwards* onto a value that is known to be old.
+    if (entry.timestamp < base.capturedAt) {
+      skippedCount += 1;
+      continue;
+    }
     const key = entry.source ?? entry.detail;
     if (!key) continue;
 
@@ -187,6 +201,7 @@ export const reconstructAt = (
     timestamp: at?.timestamp ?? base.capturedAt,
     appliedCount,
     unresolvedCount,
+    skippedCount,
     signals: [...signals.entries()]
       .map(([label, cell]) => ({
         label,

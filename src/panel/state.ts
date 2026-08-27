@@ -157,7 +157,9 @@ export class PanelState {
     if (!this.supports('components')) return;
     const result = parseComponentTree(await this.client.request('getComponentTree'));
     this.tree.value = result.tree;
-    if (result.flat.length > 0) this.components.value = result.flat;
+    // Assigned even when empty: a page that unmounted every component must
+    // clear the registry, not keep showing the previous counts.
+    this.components.value = result.flat;
   }
 
   /** Refetch signals, stores and components, and re-base time travel. */
@@ -166,7 +168,7 @@ export class PanelState {
     if (!snapshot) return;
     this.signals.value = snapshot.signals;
     this.stores.value = snapshot.stores;
-    if (snapshot.components.length > 0) this.components.value = snapshot.components;
+    this.components.value = snapshot.components;
     this.base.value = {
       signals: snapshot.signals,
       stores: snapshot.stores,
@@ -186,10 +188,13 @@ export class PanelState {
    */
   public async seedTimeline(): Promise<void> {
     if (!this.supports('timeline')) return;
-    const streamed = [...this.buffer.all()];
     const entries = parseTimeline(
       await this.client.request('getTimeline', { limit: TIMELINE_SEED_LIMIT })
     );
+    // Read the buffer *after* awaiting, not before: events that arrive while
+    // the request is in flight are in it by now, and a snapshot taken earlier
+    // would silently drop exactly those.
+    const streamed = [...this.buffer.all()];
     const seeded = new Set(entries.map(entryKey));
     this.buffer.reset(entries);
     this.buffer.extend(streamed.filter(entry => !seeded.has(entryKey(entry))));
