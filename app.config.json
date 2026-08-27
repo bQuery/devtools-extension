@@ -1,29 +1,33 @@
 {
   "AppData": {
-    "id": "browser_extension_template",
-    "name": "Browser Extension Template",
-    "version": "0.0.1",
-    "description": "A basic template based on SASS and TypeScript to create browser extensions without directly relying on a larger framework.",
+    "id": "bquery-devtools-extension",
+    "name": "bQuery DevTools",
+    "version": "1.0.0",
+    "description": "Inspect bQuery apps: component tree, signals, stores, and the reactive timeline over the stable devtools bridge protocol (v1).",
     "repository": {
       "type": "git",
-      "url": "git+ssh://git@github.com:JosunLP/BrowserExtensionTemplate.git"
+      "url": "git+https://github.com/bQuery/devtools-extension.git"
     },
     "license": "MIT",
-    "homepage": "https://github.com/JosunLP/BrowserExtensionTemplate",
+    "homepage": "https://github.com/bQuery/devtools-extension",
     "bugs": {
-      "url": "https://github.com/JosunLP/BrowserExtensionTemplate/issues"
+      "url": "https://github.com/bQuery/devtools-extension/issues"
     },
     "authors": [
       {
-        "name": "Jonas Pfalzgraf",
+        "name": "bQuery contributors",
         "email": "info@josunlp.de"
       }
-    ]
+    ],
+    "firefox": {
+      "geckoId": "bquery-devtools@bquery.js",
+      "strictMinVersion": "115.0"
+    }
   },
   "htmlTemplatePairs": [
     {
-      "key": "{{BET}}",
-      "value": "Browser Extension Template"
+      "key": "{{BQD}}",
+      "value": "bQuery DevTools"
     }
   ]
 }

@@ -1,185 +1,106 @@
+/**
+ * Options page — defaults for the DevTools panel.
+ *
+ * Written with bQuery's reactive forms and `safeHtml` sinks, and persisted
+ * through `chrome.storage.local`. Nothing here touches page data; the
+ * `storage` permission grants no access to any site.
+ *
+ * @module settings
+ */
 import { safeHtml } from '@bquery/bquery/component';
-import { $, sleep } from '@bquery/bquery/core';
-import { createForm, required } from '@bquery/bquery/forms';
-import { useAnnouncer } from '@bquery/bquery/platform';
+import { $ } from '@bquery/bquery/core';
 import { effect } from '@bquery/bquery/reactive';
-import { sanitizeHtml } from '@bquery/bquery/security';
-import { Session } from './classes/session';
-import './components/button';
-import './sass/app.sass';
+import {
+  DEFAULT_SETTINGS,
+  loadSettings,
+  MAX_POLL_INTERVAL_MS,
+  MIN_POLL_INTERVAL_MS,
+  normalizeSettings,
+  saveSettings,
+  type PanelSettings,
+} from './panel/settings';
+import { MAX_BUFFER_SIZE, MIN_BUFFER_SIZE } from './panel/timeline';
+import { signal } from '@bquery/bquery/reactive';
+import './sass/panel.sass';
 
-const CONTENT_TEST_REQUIRED_MESSAGE = 'Content test must not be empty';
-const requiredContentTestValidator = required(CONTENT_TEST_REQUIRED_MESSAGE);
-const validateRequiredContentTest = (
-  value: string
-): true | typeof CONTENT_TEST_REQUIRED_MESSAGE => {
-  return requiredContentTestValidator(value) === true ? true : CONTENT_TEST_REQUIRED_MESSAGE;
-};
+const HOST_ID = 'settings';
 
-class Settings {
-  private session: Session | null = null;
+const current = signal<PanelSettings>(DEFAULT_SETTINGS);
+const status = signal<string>('');
 
-  constructor() {
-    void this.init();
-  }
+const render = (): void => {
+  const host = document.getElementById(HOST_ID);
+  if (!host) throw new Error(`bQuery DevTools: #${HOST_ID} is missing from options.html`);
 
-  private async init(): Promise<void> {
-    try {
-      this.session = await Session.getInstance();
-      this.renderSettings();
-    } catch (error) {
-      console.error('Failed to initialize settings:', error);
-      this.handleError('Failed to load settings');
-    }
-  }
-
-  private renderSettings(): void {
-    const session = this.session;
-    if (!session) {
-      throw new Error('Session not initialized');
-    }
-
-    if (!document.getElementById('settings')) {
-      throw new Error('Settings element not found');
-    }
-    const root = $('#settings');
-    const announcer = useAnnouncer({ politeness: 'polite' });
-
-    // Render the surrounding form scaffold with `safeHtml` so interpolated
-    // values in this template are escaped here. The nested `<bet-button>`
-    // renders its own internal markup separately.
-    root.empty().append(
-      safeHtml`<form id="bet-settings-form" novalidate>
-        <div class="form-group">
-          <label for="contentTest">Content Test</label>
-          <input
-            type="text"
-            class="form-control text-input"
-            id="contentTest"
-            placeholder="Enter content test"
-            value="${session.contentTest$.value}"
-            aria-describedby="contentTest-error"
-            autocomplete="off"
-          />
-          <small id="contentTest-error" class="form-text text-danger" role="alert"></small>
-        </div>
-        <bet-button id="saveSettings" variant="success" text="Save"></bet-button>
-      </form>`
+  $(`#${HOST_ID}`)
+    .empty()
+    .append(
+      safeHtml`<form id="settings-form" class="settings-form" novalidate>
+      <div class="field-block">
+        <label for="bufferSize">Timeline buffer size</label>
+        <input type="number" id="bufferSize" min="${String(MIN_BUFFER_SIZE)}" max="${String(MAX_BUFFER_SIZE)}" step="50" />
+        <small>How many reactive events the panel keeps. Older entries are dropped first.</small>
+      </div>
+      <div class="field-block">
+        <label for="pollIntervalMs">Poll interval (ms)</label>
+        <input type="number" id="pollIntervalMs" min="${String(MIN_POLL_INTERVAL_MS)}" max="${String(MAX_POLL_INTERVAL_MS)}" step="10" />
+        <small>How often the permission-free transport drains events from the page.</small>
+      </div>
+      <div class="field-block field-inline">
+        <input type="checkbox" id="preferLiveStreaming" />
+        <label for="preferLiveStreaming">Use live streaming when this site is already allowed</label>
+        <small>Live streaming pushes events through a content script. It needs per-site permission, which the panel asks for on demand.</small>
+      </div>
+      <button type="submit" class="btn" id="save">Save</button>
+      <p id="settings-status" class="status-message" role="status"></p>
+    </form>`
     );
 
-    const formElement = $('#bet-settings-form');
-    const input = $('#contentTest');
-    const errorLabel = $('#contentTest-error');
-    const submitButton = $('#saveSettings');
+  const bufferInput = document.getElementById('bufferSize') as HTMLInputElement;
+  const pollInput = document.getElementById('pollIntervalMs') as HTMLInputElement;
+  const streamInput = document.getElementById('preferLiveStreaming') as HTMLInputElement;
 
-    // Build a reactive form with field-level validation. The initial value
-    // is seeded from the persisted session so existing data round-trips.
-    const form = createForm<{ contentTest: string }>({
-      fields: {
-        contentTest: {
-          initialValue: session.contentTest$.value,
-          validators: [validateRequiredContentTest],
-        },
-      },
-      onSubmit: async values => {
-        // Defense in depth: normalize stored markup before persistence, while
-        // still requiring context-appropriate escaping/sanitization at every
-        // render sink.
-        const sanitizedValue = sanitizeHtml(values.contentTest);
-        form.setValues({ contentTest: sanitizedValue });
-        input.val(sanitizedValue);
-        const sanitizedValidationResult = validateRequiredContentTest(sanitizedValue);
+  effect(() => {
+    const settings = current.value;
+    bufferInput.value = String(settings.bufferSize);
+    pollInput.value = String(settings.pollIntervalMs);
+    streamInput.checked = settings.preferLiveStreaming;
+  });
 
-        if (sanitizedValidationResult !== true) {
-          const validationMessage = sanitizedValidationResult;
-          form.fields.contentTest.touch();
-          form.setErrors({ contentTest: validationMessage });
-          this.showNotification(validationMessage, 'error');
-          return;
-        }
+  effect(() => {
+    $('#settings-status').text(status.value);
+  });
 
-        session.contentTest = sanitizedValue;
-        await session.save();
-        announcer.announce('Settings saved successfully');
-        this.showNotification('Settings saved successfully!', 'success');
-      },
+  $('#settings-form').on('submit', event => {
+    event.preventDefault();
+    const next = normalizeSettings({
+      bufferSize: Number(bufferInput.value),
+      pollIntervalMs: Number(pollInput.value),
+      preferLiveStreaming: streamInput.checked,
     });
-    const submitSettings = async (event: Event): Promise<void> => {
-      event.preventDefault();
-      try {
-        await form.handleSubmit();
-      } catch (error) {
-        console.error('Failed to save settings:', error);
-        announcer.announce('Failed to save settings', { politeness: 'assertive' });
-        this.showNotification('Failed to save settings', 'error');
-      }
-    };
-
-    // Two-way binding between the input and the reactive form field.
-    input.on('input', event => {
-      const target = event.target as HTMLInputElement | null;
-      if (target) {
-        form.fields.contentTest.value.value = target.value;
-      }
+    current.value = next;
+    void saveSettings(next).then(() => {
+      status.value = 'Saved. Reopen the bQuery panel to apply.';
     });
+  });
+};
 
-    input.on('blur', () => {
-      form.fields.contentTest.touch();
-    });
-
-    // Reflect field validation state into the DOM reactively.
-    effect(() => {
-      const error = form.fields.contentTest.error.value;
-      const touched = form.fields.contentTest.isTouched.value;
-      const visibleError = touched ? error : '';
-      errorLabel.text(visibleError);
-      input.attr('aria-invalid', visibleError ? 'true' : 'false');
-    });
-
-    // Disable the submit button while submission is in flight.
-    effect(() => {
-      const submitting = form.isSubmitting.value;
-      if (submitting) {
-        submitButton.attr('disabled', 'true');
-      } else {
-        submitButton.removeAttr('disabled');
-      }
-    });
-
-    formElement.on('submit', submitSettings);
-    submitButton.on('click', submitSettings);
-  }
-
-  private showNotification(message: string, type: 'success' | 'error'): void {
-    // Everything past the initial host attach goes through bQuery: class
-    // toggles, safe text content (no `innerHTML`), inline styling, and the
-    // teardown timer (`sleep` instead of a raw `setTimeout`).
-    const host = document.body.appendChild(document.createElement('div'));
-    const $host = $(host);
-    $host.addClass('notification', `notification-${type}`);
-    $host.text(message);
-    $host.css({
-      position: 'fixed',
-      top: '20px',
-      right: '20px',
-      padding: '10px 20px',
-      'border-radius': '4px',
-      color: 'white',
-      'background-color': type === 'success' ? '#28a745' : '#dc3545',
-      'z-index': '1000',
-    });
-
-    void sleep(3000).then(() => {
-      $host.remove();
-    });
-  }
-
-  private handleError(message: string): void {
-    console.error(message);
-    if (document.getElementById('settings')) {
-      $('#settings').html(safeHtml`<div class="error-message">${message}</div>`);
-    }
-  }
-}
-
-new Settings();
+void loadSettings()
+  .then(settings => {
+    current.value = settings;
+    render();
+  })
+  .catch((error: unknown) => {
+    // `render()` throws when the host element is missing. Without this the
+    // options page would stay blank with the reason only in an unhandled
+    // rejection nobody sees.
+    console.error('bQuery DevTools: the options page failed to render', error);
+    const host = document.getElementById(HOST_ID) ?? document.body;
+    $(host)
+      .empty()
+      .append(
+        safeHtml`<p class="status-message">Could not load the options page: ${
+          error instanceof Error ? error.message : String(error)
+        }</p>`
+      );
+  });

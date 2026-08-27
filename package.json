@@ -1,34 +1,41 @@
 {
-  "name": "browser_extension_template",
-  "version": "0.0.1",
+  "name": "bquery-devtools-extension",
+  "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "deploy-v3": "bun run clean && bun run build-tooling && bun run sync && bun run build && bun run parse",
+    "deploy-v3": "bun run clean && bun run build-tooling && bun run sync && bun run build && bun run build-content && bun run parse",
     "deploy-v2": "bun run deploy-v3 && bun ./tools/v2.js",
     "build": "vite build",
+    "build-content": "bun run build-tooling && bun ./tools/content.js",
     "build-tooling": "tsc --project ./tooling.tsconfig.json",
     "watch": "vite build --watch",
     "sync": "bun run build-tooling && bun ./tools/syncConfig.js",
     "parse": "bun ./tools/parse.js",
     "clean": "bunx rimraf ./dist/",
     "dev": "bun run sync && bun run watch",
-    "lint": "eslint src/**/*.ts --fix",
-    "format": "prettier --write --no-error-on-unmatched-pattern src/**/*.{ts,json}",
-    "format:ts": "prettier --write --no-error-on-unmatched-pattern src/**/*.ts",
-    "format:json": "prettier --write --no-error-on-unmatched-pattern src/**/*.json",
+    "lint": "eslint \"src/**/*.ts\" \"tests/**/*.ts\" --fix",
+    "lint:check": "eslint \"src/**/*.ts\" \"tests/**/*.ts\"",
+    "format": "prettier --write --no-error-on-unmatched-pattern \"src/**/*.{ts,json}\" \"tests/**/*.ts\" \"tools/*.ts\"",
+    "format:check": "prettier --check --no-error-on-unmatched-pattern \"src/**/*.{ts,json}\" \"tests/**/*.ts\" \"tools/*.ts\"",
+    "test": "bun test tests/unit",
+    "test:e2e": "bun run deploy-v3 && bun x playwright test",
     "type-check": "tsc --noEmit",
-    "validate": "bun run type-check && bun run lint",
-    "prepare": "bun run validate && bun run build-tooling"
+    "validate": "bun run type-check && bun run lint:check && bun run test",
+    "package": "bun ./tools/package.js",
+    "prepare": "bun run build-tooling",
+    "clean:all": "bunx rimraf ./dist/ ./artifacts/ ./test-results/ ./playwright-report/",
+    "verify": "bun run build-tooling && bun ./tools/verifyBuild.js"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.6",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.56.0",
+    "@types/bun": "^1.3.6",
     "@types/chrome": "^0.2.6",
     "@types/node": "^26.2.0",
     "@typescript-eslint/eslint-plugin": "^8.67.0",
     "@typescript-eslint/parser": "^8.67.0",
-    "@webcomponents/webcomponentsjs": "^2.8.0",
     "esbuild": "^0.28.2",
     "eslint": "^10.8.1",
     "prettier": "^3.9.6",
@@ -37,26 +44,28 @@
     "typescript": "^6.0.3",
     "vite": "^8.2.1"
   },
-  "browserslist": ["> 1%", "last 2 versions", "not dead"],
+  "browserslist": [
+    "> 1%",
+    "last 2 versions",
+    "not dead"
+  ],
   "authors": [
     {
-      "name": "Jonas Pfalzgraf",
+      "name": "bQuery contributors",
       "email": "info@josunlp.de"
     }
   ],
-  "description": "A basic template based on SASS and TypeScript to create browser extensions without directly relying on a larger framework.",
-  "homepage": "https://github.com/JosunLP/BrowserExtensionTemplate",
+  "description": "Inspect bQuery apps: component tree, signals, stores, and the reactive timeline over the stable devtools bridge protocol (v1).",
+  "homepage": "https://github.com/bQuery/devtools-extension",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+ssh://git@github.com:JosunLP/BrowserExtensionTemplate.git"
+    "url": "git+https://github.com/bQuery/devtools-extension.git"
   },
   "bugs": {
-    "url": "https://github.com/JosunLP/BrowserExtensionTemplate/issues"
+    "url": "https://github.com/bQuery/devtools-extension/issues"
   },
   "dependencies": {
-    "@bquery/bquery": "^1.16.0",
-    "@webcomponents/custom-elements": "^1.6.0",
-    "bootstrap": "^5.3.8"
+    "@bquery/bquery": "^1.16.0"
   }
 }

@@ -1,113 +1,64 @@
 /**
- * Background service worker.
+ * Background service worker (MV3) / background script (MV2).
  *
- * Uses bQuery's reactive primitives to track lightweight runtime state
- * (install reason, message counters) even outside of a DOM environment.
- * Reactive state is convenient for diagnostics and can be inspected via the
- * `getVersion` / `ping` messages from privileged extension pages.
+ * It exists only for the optional *port* transport: routing bridge traffic
+ * between a DevTools panel and the content script of the tab it inspects,
+ * and injecting that content script on demand once the user has granted the
+ * origin permission. The default eval transport does not involve this worker
+ * at all, which is why the extension ships without any static content script
+ * or host permission.
+ *
+ * @module background
  */
-import { computed, effect, signal } from '@bquery/bquery/reactive';
+import { extensionApi } from './browser';
+import { ENVELOPE_SOURCE } from './protocol/envelope';
+import { BridgeRouter, type RouterPort, type RouterSender } from './background/router';
 
-interface ExtensionMessage {
-  type: string;
-  payload?: unknown;
-}
+const CONTENT_SCRIPT_FILE = 'content.js';
 
-class Background {
-  private readonly installReason = signal<string | null>(null);
-  private readonly lifecycleEvent = signal<string | null>(null);
-  private readonly messageCount = signal(0);
-  private readonly isReady = computed(() => this.lifecycleEvent.value !== null);
+const api = extensionApi();
 
-  constructor() {
-    void this.init();
-  }
-
-  private async init(): Promise<void> {
-    try {
-      effect(() => {
-        if (this.isReady.value) {
-          console.log(
-            `Background ready (lifecycleEvent=${String(this.lifecycleEvent.value)}, installReason=${String(this.installReason.value)})`
-          );
-        }
+const router = new BridgeRouter({
+  extensionId: api.runtime.id,
+  createToken: () => crypto.randomUUID(),
+  sendToTab: async (tabId, payload) => {
+    await api.tabs.sendMessage(tabId, {
+      source: ENVELOPE_SOURCE,
+      type: 'to-page',
+      payload,
+    });
+  },
+  injectContentScript: async tabId => {
+    const scripting = (api as { scripting?: typeof chrome.scripting }).scripting;
+    if (scripting?.executeScript) {
+      await scripting.executeScript({
+        target: { tabId },
+        files: [CONTENT_SCRIPT_FILE],
+        injectImmediately: true,
       });
-
-      await this.setupEventListeners();
-      await this.main();
-      console.log('Background service worker initialized');
-    } catch (error) {
-      console.error('Failed to initialize background service worker:', error);
+      return;
     }
-  }
-
-  private async setupEventListeners(): Promise<void> {
-    // Install event
-    chrome.runtime.onInstalled.addListener(details => {
-      console.log('Extension installed:', details.reason);
-      this.installReason.value = details.reason;
-      this.lifecycleEvent.value = details.reason;
-      this.handleInstall(details.reason);
-    });
-
-    // Message handling
-    chrome.runtime.onMessage.addListener((message: ExtensionMessage, sender, sendResponse) => {
-      this.messageCount.value += 1;
-      this.handleMessage(message, sender)
-        .then(response => sendResponse(response))
-        .catch(error => {
-          console.error('Error handling message:', error);
-          sendResponse({ error: error.message });
-        });
-      return true; // Indicates we will send a response asynchronously
-    });
-
-    // Startup event
-    chrome.runtime.onStartup.addListener(() => {
-      console.log('Extension started');
-      this.lifecycleEvent.value = 'startup';
-    });
-  }
-
-  private handleInstall(reason: string): void {
-    if (reason === 'install') {
-      console.log('Extension installed for the first time');
-    } else if (reason === 'update') {
-      console.log('Extension updated');
+    // MV2 (Firefox) fallback.
+    const legacyTabs = api.tabs as unknown as {
+      executeScript?: (
+        tabId: number,
+        details: { file: string; runAt?: string }
+      ) => Promise<unknown>;
+    };
+    if (!legacyTabs.executeScript) {
+      throw new Error('script injection is not supported in this browser');
     }
-  }
+    await legacyTabs.executeScript(tabId, { file: CONTENT_SCRIPT_FILE, runAt: 'document_start' });
+  },
+});
 
-  private async handleMessage(
-    message: ExtensionMessage,
-    sender: chrome.runtime.MessageSender
-  ): Promise<unknown> {
-    console.log('Received message:', message, 'from:', sender);
+api.runtime.onConnect.addListener(port => {
+  router.handleConnect(port as unknown as RouterPort);
+});
 
-    switch (message.type) {
-      case 'ping':
-        return {
-          type: 'pong',
-          timestamp: Date.now(),
-          messageCount: this.messageCount.value,
-          lifecycleEvent: this.lifecycleEvent.value,
-        };
-
-      case 'getVersion':
-        return {
-          type: 'version',
-          version: chrome.runtime.getManifest().version,
-          installReason: this.installReason.value,
-          lifecycleEvent: this.lifecycleEvent.value,
-        };
-
-      default:
-        throw new Error(`Unknown message type: ${message.type}`);
-    }
-  }
-
-  private async main(): Promise<void> {
-    // Main background logic can be implemented here.
-  }
-}
-
-new Background();
+api.runtime.onMessage.addListener((message: unknown, sender) => {
+  router.handleContentMessage(message, sender as RouterSender);
+  // Nothing here answers synchronously; returning `undefined` keeps the
+  // message channel from being held open.
+  return undefined;
+});
