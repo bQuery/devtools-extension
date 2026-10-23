@@ -5,7 +5,7 @@
     "": {
       "name": "browser_extension_template",
       "dependencies": {
-        "@bquery/bquery": "^1.16.0",
+        "@bquery/bquery": "^1.18.0",
       },
       "devDependencies": {
         "@eslint/eslintrc": "^3.3.6",
@@ -27,7 +27,7 @@
     },
   },
   "packages": {
-    "@bquery/bquery": ["@bquery/bquery@1.16.0", "", { "bin": { "bquery-view-compile": "bin/bquery-view-compile.mjs", "bquery-i18n": "bin/bquery-i18n.mjs" } }, "sha512-UVWWI6HI0WlVZ4bPn+uoAA6szxWSv/PIZGEzexvz9EaWLnbFCD/HLXT3KD7Ho98rNnDmenQtJEeMhLsgIUY92A=="],
+    "@bquery/bquery": ["@bquery/bquery@1.18.0", "", { "bin": { "bquery-i18n": "bin/bquery-i18n.mjs", "create-bquery": "bin/create-bquery.mjs", "bquery-view-compile": "bin/bquery-view-compile.mjs" } }, "sha512-8rR0q4SXRccs/TsdB5IOh2y/4dS7+AYsXvUrOnhouJ81l8nSzPegzx/dJ41Blj3oPq+CpcuRLNa9NSBSXc7skg=="],
 
     "@esbuild/aix-ppc64": ["@esbuild/aix-ppc64@0.28.2", "", { "os": "aix", "cpu": "ppc64" }, "sha512-XExcO+dvLKvVtNTibSTBej1NCAbaGhWn9Ww1ZPx80qsahhPFe/8jgWP0IchNe0F3HwkU7n8ejhH8bjonqht8mQ=="],
 
@@ -281,8 +281,6 @@
 
     "globals": ["globals@14.0.0", "", {}, "sha512-oahGvuMGQlPw/ivIYBjVSrWAfWLBeku5tpPE2fOPLi+WHffIWbuh2tCjhyQhTBPMf5E9jDEH4FOmTYgYwbKwtQ=="],
 
-    "has-flag": ["has-flag@4.0.0", "", {}, "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ=="],
-
     "ignore": ["ignore@5.3.2", "", {}, "sha512-hsBTNUqQTDwkWtcdYI2i06Y/nUBEsNEDJKjWdigLvegy8kDuJAS8uRlpkkcQpyEXL0Z/pjDy5HBmMjRCJ2gq+g=="],
 
     "immutable": ["immutable@5.1.5", "", {}, "sha512-t7xcm2siw+hlUM68I+UEOK+z84RzmN59as9DZ7P1l0994DKUWV7UXBMQZVxaoMSRQ+PBZbHCOoBt7a2wxOMt+A=="],
@@ -400,8 +398,6 @@
     "source-map-js": ["source-map-js@1.2.1", "", {}, "sha512-UXWMKhLOwVKb728IUtQPXxfYU+usdybtUrK/8uGE8CQMvrhOpwvzDBwj0QhSL7MQc7vIsISBG8VQ8+IDQxpfQA=="],
 
     "strip-json-comments": ["strip-json-comments@3.1.1", "", {}, "sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig=="],
-
-    "supports-color": ["supports-color@7.2.0", "", { "dependencies": { "has-flag": "^4.0.0" } }, "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw=="],
 
     "tinyglobby": ["tinyglobby@0.2.17", "", { "dependencies": { "fdir": "^6.5.0", "picomatch": "^4.0.4" } }, "sha512-wXR/dYpcqKmfWpEdZjiKJOwCNFndD0DMnrW/cYjVGttEkBfVgcLFHoNrlj47mjOVic9yyNu65alsgF4NQyTa2g=="],
 

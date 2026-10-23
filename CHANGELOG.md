@@ -9,6 +9,15 @@ version is what ties the two together.
 
 ## [Unreleased]
 
+### Changed
+
+- Build against `@bquery/bquery` **1.18.0** (was 1.16.0). The panel only uses
+  `core`, `reactive` and `component`'s `safeHtml`, none of which changed
+  behaviour for it; 1.18's component morphing, testing-event and HTTP retry
+  changes do not touch the extension. The bridge protocol is still **v1** and
+  unchanged on the wire, so inspected apps still need only
+  `@bquery/bquery` ≥ 1.15.0.
+
 ## [1.0.0]
 
 First release as a standalone repository, rebuilt on
