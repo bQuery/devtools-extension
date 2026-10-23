@@ -66,6 +66,6 @@
     "url": "https://github.com/bQuery/devtools-extension/issues"
   },
   "dependencies": {
-    "@bquery/bquery": "^1.16.0"
+    "@bquery/bquery": "^1.18.0"
   }
 }
